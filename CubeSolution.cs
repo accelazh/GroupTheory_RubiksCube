@@ -14,11 +14,6 @@ namespace GroupTheory_RubiksCube
                 public List<CubeAction> Generators;
 
                 public PositionSet NextToStablizePos;
-                /// <summary>
-                /// By (slightly changed version of) Prop 4.7 in Group Theory J.S. Milne, we know the
-                /// orbit of the positions we are observing, is 1-on-1 mapping to the set of *right* cosets
-                /// divided by stablizer subgroup of the positions we are observing. 
-                /// </summary>
                 public Dictionary<PositionSet, CubeAction> OrbitToCoset;
 
                 public GStep(PositionSet stablizedPos, IEnumerable<CubeAction> generators)
@@ -47,6 +42,15 @@ namespace GroupTheory_RubiksCube
                     return new GStep(gNextStablizedPos, gNextGenerators);
                 }
 
+                /// <summary>
+                /// By (slightly changed version of) Prop 4.7 in Group Theory J.S. Milne, we know the
+                /// orbit of the positions we are observing, is 1-on-1 mapping to the set of *right* cosets
+                /// divided by stablizer subgroup of the positions we are observing.
+                ///
+                /// In this way, by traversal through each possible state of the the positions we are observing,
+                /// we can discover each of the cosets of the stablizer subgroup, which will later be input
+                /// into Schreier subgroup lemma to obtain the stablizer subgroup's generators.
+                /// </summary>
                 private static Dictionary<PositionSet, CubeAction> ExploreOrbitToCoset(
                     PositionSet stablizedPos,
                     IEnumerable<CubeAction> generators,
@@ -111,24 +115,11 @@ namespace GroupTheory_RubiksCube
                     return orbitToCoset;
                 }
 
-                // TODO We are probably getting it all wrong. By steps at https://www.jaapsch.net/puzzles/schreier.htm,
-                // we need to guarantee that, no matter what is the current position state, by *cosetRepresentative^(-1) we
-                // will always go back to the standard position state. That's how we reverse back the map.
-                //
-                // However, in current CubeState model, we cannot guarantee this, since we are tracking each position has
-                // which block. In the contrast, we should instead track each block is at which position (and at which facing
-                // direction, so we can deduce cube colors). In later way, *cosetRepresentative^(-1) always bring the block
-                // back.
-                //
-                // And to track a block's facing direction, we can construct a 3-dimensional axis system, and cube operations
-                // are always turning 90 degrees around certain axis.
-                //
-                // As just math checked, in the later way to track, we should use *left* coset, rather than now the *right*
-                // coset. In same left coset, each group action always moves the observed set of blocks to same end position.
-                //
-                // And, we should try use stablizer chain of solving one block each time. In this way we should have less number
-                // of cosets (and maybe generators) to walk through.
-
+                /// <summary>
+                /// To obtain the generators of stablizer subgroup, by Schreier subgroup lemma as stated
+                /// at https://www.jaapsch.net/puzzles/schreier.htm. We need to input the generators of
+                /// group, and the sets of cosets of the stablizer subgroup.
+                /// </summary>
                 private static List<CubeAction> ObtainGeneratorsOfStablizerSubgroup(
                     IEnumerable<CubeAction> groupGenerators,
                     PositionSet subgroupStablizedPos,
@@ -381,3 +372,21 @@ namespace GroupTheory_RubiksCube
         }
     }
 }
+
+// TODO We are probably getting it all wrong. By steps at https://www.jaapsch.net/puzzles/schreier.htm,
+// we need to guarantee that, no matter what is the current position state, by *cosetRepresentative^(-1) we
+// will always go back to the standard position state. That's how we reverse back the map.
+//
+// However, in current CubeState model, we cannot guarantee this, since we are tracking each position has
+// which block. In the contrast, we should instead track each block is at which position (and at which facing
+// direction, so we can deduce cube colors). In later way, *cosetRepresentative^(-1) always bring the block
+// back.
+//
+// And to track a block's facing direction, we can construct a 3-dimensional axis system, and cube operations
+// are always turning 90 degrees around certain axis.
+//
+// As just math checked, in the later way to track, we should use *left* coset, rather than now the *right*
+// coset. In same left coset, each group action always moves the observed set of blocks to same end position.
+//
+// And, we should try use stablizer chain of solving one block each time. In this way we should have less number
+// of cosets (and maybe generators) to walk through.

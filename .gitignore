@@ -1,6 +1,7 @@
 bin/
 obj/
 
+*.sln
 *.projhash
 *.projhash.userData
 *.projhash.userData.assemblies

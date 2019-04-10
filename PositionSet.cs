@@ -195,8 +195,6 @@ namespace GroupTheory_RubiksCube
             public static bool IsStablized(CubeAction action, PositionSet observedPos)
             {
                 var actionPos = new PositionSet(observedPos);
-                action.Simplify().Act(actionPos.State);
-
                 foreach (var pos in observedPos.Positions)
                 {
                     if (actionPos.GetState(pos) != observedPos.GetState(pos))
