@@ -88,7 +88,16 @@ namespace GroupTheory_RubiksCube
                         int curValue = (int)newOps[i];
                         if (curValue == lastValue)
                         {
-                            duplicateCount++;
+                            if (0 == duplicateCount)
+                            {
+                                // If first time found duplicate, it means
+                                // there are two duplicates now.
+                                duplicateCount = 2;
+                            }
+                            else
+                            {
+                                duplicateCount++;
+                            }
                         }
                         else
                         {
@@ -107,13 +116,19 @@ namespace GroupTheory_RubiksCube
                 } while (found);
 
                 var newAction = new CubeAction(newOps);
-                if (Utils.GlobalRandom.Next(Utils.SkipVerifyBase) <= (int)(Utils.SkipVerifyBase * (1 - Utils.SkipVerifyRatio)))
-                {
-                    Utils.DebugAssert(newAction.Equals(this));
-                }
+                Utils.DebugAssert(newAction.Equals(this));
                 return newAction;
             }
-            
+
+            public static CubeState RandomCube(int actionLength)
+            {
+                CubeState setupState = new CubeState();
+                CubeAction setupAction = Random(actionLength);
+                setupAction.Act(setupState);
+
+                return setupState;
+            }
+
             public override bool Equals(object obj)
             {
                 return Equals(obj as CubeAction);
@@ -144,16 +159,53 @@ namespace GroupTheory_RubiksCube
             }
 
             /// <summary>
-            /// Print in reverse order so can copied directly to https://alg.cubing.net
+            /// Print in reverse order so can be executed directly to https://alg.cubing.net
             /// </summary>
             public override string ToString()
             {
                 var outStr = new StringBuilder();
-                foreach (var op in Enumerable.Reverse(Ops))
+
+                var opList = Enumerable.Reverse(Ops);
+                CubeOp.Type? lastOp = null;
+                int duplicateCount = 0;
+
+                foreach (var op in opList)
                 {
-                    outStr.Append(CubeOp.ToString(op) + " ");
+                    if (!lastOp.HasValue)
+                    {
+                        lastOp = op;
+                        duplicateCount++;
+
+                        continue;
+                    }
+
+                    if (op == lastOp)
+                    {
+                        duplicateCount++;
+                    }
+                    else
+                    {
+                        outStr.Append(
+                            $"{CubeOp.ToString(lastOp.Value)}" +
+                            (duplicateCount > 1 ? $"{duplicateCount}" : " ") +
+                            " ");
+
+                        duplicateCount = 1;
+                        lastOp = op;
+                    }
                 }
-                return outStr.ToString().TrimEnd();
+
+                if (opList.Count() != 0)
+                {
+                    Utils.DebugAssert(lastOp.HasValue);
+                    Utils.DebugAssert(duplicateCount >= 1);
+
+                    outStr.Append(
+                        $"{CubeOp.ToString(lastOp.Value)}" +
+                        (duplicateCount > 1 ? $"{duplicateCount}" : ""));
+                }
+
+                return outStr.ToString();
             }
         }
     }

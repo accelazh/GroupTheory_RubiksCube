@@ -39,9 +39,7 @@ namespace GroupTheory_RubiksCube
             // Solve a Rubik's Cube
             //
 
-            CubeState setupState = new CubeState();
-            CubeAction setupAction = CubeAction.Random(20);
-            setupAction.Act(setupState);
+            CubeState setupState = CubeAction.RandomCube(20);
 
             CubeState state = new CubeState(setupState);
             cs.SolveCube(state);

@@ -1,395 +1,875 @@
 ﻿using System;
+using System.Collections.Generic;
 using System.Linq;
+using System.Text;
 
 namespace GroupTheory_RubiksCube
 {
     /// 4 * 4 * 4 Rubik's Cube. Convenience online: https://alg.cubing.net
     namespace level4
     {
-        // Orientation: Green face to me, white face up (BOY color scheme).
-        // 
-        // Side notes: We represent cube state by position of each block. Possibly some different physical
-        //             cube states will be undifferentiable by block position. But this shouldn't affect
-        //             the group properties and the cube solutiion. E.g. a corner/edge block of same position
-        //             is possible to be facing different directions, thus leads to different face colors. 
-        public class CubeState : IEquatable<CubeState>
+        public class CubeState: IEquatable<CubeState>
         {
-            // The 8 corner blocks
-            public class Corners : IEquatable<Corners>
+            public const int Level = 4;
+            public const int CornerCount = 8;
+            public const int EdgeCount = 12;
+            public const int FaceCount = 6;
+
+            public const int CornerBlockCount = CornerCount * 1;
+            public const int EdgeBlockCount = EdgeCount * (Level - 2);
+            public const int FaceBlockCount = FaceCount * (Level - 2) * (Level - 2);
+            public const int BlockCount = CornerBlockCount + EdgeBlockCount + FaceBlockCount;
+
+            public const int TurnAround = 4;
+            public const int CornerBlockColorCount = 3;
+            public const int EdgeBlockColorCount = 2;
+            public const int FaceBlockColorCount = 1;
+
+            public const int CornerBlockSameColorCount = 1;
+            public const int EdgeBlockSameColorCount = 2;
+            public const int FaceBlockSameColorCount = 4;
+
+            public enum Color
             {
-                public const int Count = 8 * 1;
+                None = 0,   // A block's face to internal of cube has no color
 
-                // Positions of corner blocks.
-                public enum Pos
+                Green,
+                Red,
+                Blue,
+
+                Orange,
+                White,
+                Yellow,
+            }
+
+            public enum Axis
+            {
+                X = 0,  // Facing to me
+                Y,      // Facing to right
+                Z,      // Facing to up side
+            }
+
+            public enum Direction
+            {
+                Positive = 0,   // Positive side of Axis, or rotate clockwise
+                Negative,       // Negative side of Axis, or rotate counter-clockwise
+            }
+
+            /// <summary>
+            /// A 4 * 4 * 4 Rubik's Cube is composed of 8 corner blocks, 12 * 2 edge blocks, and 6 * 4 faces blocks
+            /// </summary>
+            public class Block : IEquatable<Block>, IComparable<Block>
+            {
+                public enum Type
                 {
-                    // Front (face), left, up
-                    FLU = 0,
-                    // Front (face), right, up
-                    FRU,
-                    // Front (face), right, down
-                    FRD,
-                    // Front (face), left, down
-                    FLD,
-
-                    // Back (face), left, up
-                    BLU,
-                    // Back (face), right, up
-                    BRU,
-                    // Back (face), right, down
-                    BRD,
-                    // Back (face), left, down
-                    BLD,
+                    Corner = 0,
+                    Edge,
+                    Face,
                 }
 
-                // Index corresponds to enum Pos. Value too.
-                public int[] State = new int[Count]
-                {
-                    (int)Pos.FLU,
-                    (int)Pos.FRU,
-                    (int)Pos.FRD,
-                    (int)Pos.FLD,
+                /// <summary>
+                /// 3-Dimension axis system to describe positions of blocks in the cube, origin
+                /// at the center of the cube, each axis perpendicular with cube face.
+                /// </summary>
+                public int[] Position = new int[Enum.GetNames(typeof(Axis)).Length];
 
-                    (int)Pos.BLU,
-                    (int)Pos.BRU,
-                    (int)Pos.BRD,
-                    (int)Pos.BLD,
-                };
+                /// <summary>
+                /// Color at each of 6 faces of the block. A face is indexed with the X/Y/Z axis
+                /// perpendicular with it, and to which positive/negative direction it is on that
+                /// axis. The block can rotate, but each X/Y/Z axis is absolute.
+                /// </summary>
+                public Color[,] Color = new Color[Enum.GetNames(typeof(Axis)).Length,
+                                                    Enum.GetNames(typeof(Direction)).Length];
 
-                public Corners()
+                public Block()
                 {
                     // Do nothing
                 }
 
-                public Corners(Corners other)
+                public Block(Block other)
                 {
-                    Array.Copy(other.State, this.State, Count);
+                    Array.Copy(other.Position, this.Position, this.Position.Length);
+                    Array.Copy(other.Color, this.Color, this.Color.Length);
                 }
 
-                public Corners(int[] otherState)
+                // May generate infeasible block position and color
+                private void Randomize()
                 {
-                    if (!Utils.IsIntPermutation(otherState, Count))
+                    for (int i = 0; i < Position.Length; i++)
                     {
-                        throw new ArgumentException();
+                        Position[i] = Utils.GlobalRandom.Next(-Level / 2, Level / 2 + 1);
                     }
 
-                    this.State = (int[])otherState.Clone();
+                    for (int i = 0; i < Color.Length; i++)
+                    {
+                        Color[i / Enum.GetNames(typeof(Direction)).Length,
+                                i % Enum.GetNames(typeof(Direction)).Length]
+                            = (Color)Utils.GlobalRandom.Next(0, Enum.GetNames(typeof(Color)).Length);
+                    }
                 }
 
-                public static Corners Random()
+                public static Block Random()
                 {
-                    return new Corners(Utils.RandomIntPermutation(Count));
+                    var block = new Block();
+                    block.Randomize();
+
+                    return block;
+                }
+
+                /// <summary>
+                /// Rotate around the axis. Looking from the axis at positive side to origin,
+                /// rotate clockwise or counter-clockwise accoring to direction. Each time
+                /// rotate 90 degree.
+                /// </summary>
+                public void Rotate(Axis axis, Direction direction)
+                {
+                    RotatePosition(axis, direction);
+                    RotateColor(axis, direction);
+                }
+
+                private void RotatePosition(Axis axis, Direction direction)
+                {
+                    switch (axis)
+                    {
+                        case Axis.X:
+                            RotatePosition2D((int)Axis.Y, (int)Axis.Z, direction);
+                            break;
+                        case Axis.Y:
+                            RotatePosition2D((int)Axis.Z, (int)Axis.X, direction);
+                            break;
+                        case Axis.Z:
+                            RotatePosition2D((int)Axis.X, (int)Axis.Y, direction);
+                            break;
+
+                        default:
+                            throw new ArgumentException();
+                    }
+                }
+
+                private void RotatePosition2D(int hAxisIdx, int vAxisIdx, Direction direction)
+                {
+                    switch (direction)
+                    {
+                        case Direction.Positive:
+                            RotatePosition2D_Clockwise(hAxisIdx, vAxisIdx);
+                            break;
+                        case Direction.Negative:
+                            RotatePosition2D_CounterClockwise(hAxisIdx, vAxisIdx);
+                            break;
+
+                        default:
+                            throw new ArgumentException();
+                    }
+                }
+
+                /// <summary>
+                /// hAxisIdx is the one in Axis.X/Y/Z which used as the horizontal axis,
+                /// and vAxisIdx for vertical axis, on the 2D surface. vAxis must point
+                /// up and hAxis must point right.
+                /// </summary>
+                private void RotatePosition2D_Clockwise(int hAxisIdx, int vAxisIdx)
+                {
+                    int oldH = Position[hAxisIdx];
+                    int oldV = Position[vAxisIdx];
+
+                    Position[hAxisIdx] = oldV;
+                    Position[vAxisIdx] = -oldH;
+                }
+
+                // Similarly, vAxis must point up and hAxis must point right.
+                private void RotatePosition2D_CounterClockwise(int hAxisIdx, int vAxisIdx)
+                {
+                    int oldH = Position[hAxisIdx];
+                    int oldV = Position[vAxisIdx];
+
+                    Position[hAxisIdx] = -oldV;
+                    Position[vAxisIdx] = oldH;
+                }
+
+                private void RotateColor(Axis axis, Direction direction)
+                {
+                    switch (axis)
+                    {
+                        case Axis.X:
+                            RotateColor2D((int)Axis.Y, (int)Axis.Z, direction);
+                            break;
+                        case Axis.Y:
+                            RotateColor2D((int)Axis.Z, (int)Axis.X, direction);
+                            break;
+                        case Axis.Z:
+                            RotateColor2D((int)Axis.X, (int)Axis.Y, direction);
+                            break;
+
+                        default:
+                            throw new ArgumentException();
+                    }
+                }
+
+                // Since we represent color faces with axis system, the operation
+                // is similar with RotatePosition2D
+                private void RotateColor2D(int hAxisIdx, int vAxisIdx, Direction direction)
+                {
+                    switch (direction)
+                    {
+                        case Direction.Positive:
+                            RotateColor2D_Clockwise(hAxisIdx, vAxisIdx);
+                            break;
+                        case Direction.Negative:
+                            RotateColor2D_CounterClockwise(hAxisIdx, vAxisIdx);
+                            break;
+
+                        default:
+                            throw new ArgumentException();
+                    }
+                }
+
+                // Similarly, vAxis must point up and hAxis must point right.
+                private void RotateColor2D_Clockwise(int hAxisIdx, int vAxisIdx)
+                {
+                    var oldVAxisPositive = Color[vAxisIdx, (int)Direction.Positive];
+
+                    Color[vAxisIdx, (int)Direction.Positive] = Color[hAxisIdx, (int)Direction.Negative];
+                    Color[hAxisIdx, (int)Direction.Negative] = Color[vAxisIdx, (int)Direction.Negative];
+                    Color[vAxisIdx, (int)Direction.Negative] = Color[hAxisIdx, (int)Direction.Positive];
+                    Color[hAxisIdx, (int)Direction.Positive] = oldVAxisPositive;
+                }
+
+                // Similarly, vAxis must point up and hAxis must point right.
+                private void RotateColor2D_CounterClockwise(int hAxisIdx, int vAxisIdx)
+                {
+                    var oldVAxisPositive = Color[vAxisIdx, (int)Direction.Positive];
+
+                    Color[vAxisIdx, (int)Direction.Positive] = Color[hAxisIdx, (int)Direction.Positive];
+                    Color[hAxisIdx, (int)Direction.Positive] = Color[vAxisIdx, (int)Direction.Negative];
+                    Color[vAxisIdx, (int)Direction.Negative] = Color[hAxisIdx, (int)Direction.Negative];
+                    Color[hAxisIdx, (int)Direction.Negative] = oldVAxisPositive;
+                }
+
+                public static int GetPositionBoundaryCount(int[] position)
+                {
+                    int count = 0;
+                    for (int i = 0; i < Enum.GetNames(typeof(Axis)).Length; i++)
+                    {
+                        if (Math.Abs(position[i]) == Level / 2)
+                        {
+                            count++;
+                        }
+                    }
+
+                    return count;
+                }
+
+                public static bool IsValidPosition(int[] position)
+                {
+                    if (GetPositionBoundaryCount(position) < 1)
+                    {
+                        return false;
+                    }
+
+                    if (position.Any(p => 0 == p))
+                    {
+                        return false;
+                    }
+
+                    return true;
+                }
+
+                public Type GetBlockType()
+                {
+                    int count = GetPositionBoundaryCount(Position);
+                    switch (count)
+                    {
+                        case 1:
+                            return Type.Face;
+                        case 2:
+                            return Type.Edge;
+                        case 3:
+                            return Type.Corner;
+
+                        default:
+                            throw new ArgumentException();
+                    }
+                }
+
+                public List<Color> GetSortedColors()
+                {
+                    return this.Color.Cast<Color>()
+                            .Where(c => c != CubeState.Color.None)
+                            .OrderBy(c => c)
+                            .ToList();
                 }
 
                 public override bool Equals(object obj)
                 {
-                    return Equals(obj as Corners);
+                    return Equals(obj as Block);
                 }
 
-                public bool Equals(Corners obj)
+                public bool Equals(Block obj)
                 {
-                    return obj != null ? State.SequenceEqual(obj.State) : false;
+                    if (null == obj)
+                    {
+                        return false;
+                    }
+
+                    if (!Enumerable.SequenceEqual(Position, obj.Position))
+                    {
+                        return false;
+                    }
+                    if (!Utils.Array2DEqual(Color, obj.Color))
+                    {
+                        return false;
+                    }
+
+                    return true;
                 }
 
                 public override int GetHashCode()
                 {
-                    return Utils.GetHashCode(State);
+                    return Utils.GetHashCode(Position.Concat(Color.Cast<int>()));
+                }
+
+                // Useful to decide which block we want to solve first
+                public int CompareTo(Block other)
+                {
+                    Type myType = GetBlockType();
+                    Type otherType = other.GetBlockType();
+
+                    int compareRet = myType.CompareTo(otherType);
+                    if (compareRet != 0)
+                    {
+                        return compareRet;
+                    }
+
+                    var myColors = GetSortedColors();
+                    var otherColors = other.GetSortedColors();
+
+                    for (int i = 0; i < Math.Min(myColors.Count, otherColors.Count); i++)
+                    {
+                        compareRet = myColors[i].CompareTo(otherColors[i]);
+                        if (compareRet != 0)
+                        {
+                            return compareRet;
+                        }
+                    }
+
+                    compareRet = myColors.Count - otherColors.Count;
+                    if (compareRet != 0)
+                    {
+                        return compareRet;
+                    }
+
+                    for (int i = 0; i < Position.Length; i++)
+                    {
+                        compareRet = Position[i] - other.Position[i];
+                        if (compareRet != 0)
+                        {
+                            return compareRet;
+                        }
+                    }
+
+                    for (int i = 0; i < Color.GetLength(0); i++)
+                    {
+                        for (int j = 0; j < Color.GetLength(1); j++)
+                        {
+                            compareRet = Color[i, j] - other.Color[i, j];
+                            if (compareRet != 0)
+                            {
+                                return compareRet;
+                            }
+                        }
+                    }
+
+                    Utils.DebugAssert(this.Equals(other));
+                    return 0;
+                }
+
+                public override string ToString()
+                {
+                    StringBuilder strOut = new StringBuilder();
+
+                    foreach (Axis axis in Enum.GetValues(typeof(Axis)))
+                    {
+                        strOut.Append(String.Format("{0:+;-;+}{0,1:#;#;0}", Position[(int)axis]));
+                    }
+
+                    foreach (Axis axis in Enum.GetValues(typeof(Axis)))
+                    {
+                        foreach (Direction direction in Enum.GetValues(typeof(Direction)))
+                        {
+                            strOut.Append(Char.ToLower(Color[(int)axis, (int)direction].ToString()[0]));
+                        }
+                    }
+
+                    return strOut.ToString();
                 }
             }
 
-            // The 12 * 2 corner blocks
-            public class Edges : IEquatable<Edges>
+            // We track each block to follow where it goes, rather than track each cube slot
+            // to see which block the slot is holding. (The later leads to a different group
+            // structure)
+            //
+            // TODO comment why we choose NOT later.
+            public Block[] Blocks = new Block[BlockCount];
+
+            // We use axis * direction to represent face, see Block.Color
+            public static readonly Color[,] StandardCubeColor = new Color[,] {
+                { Color.Green, Color.Blue },
+                { Color.Red, Color.Orange },
+                { Color.White, Color.Yellow },
+            };
+
+            static CubeState()
             {
-                public const int Count = 12 * 2;
-
-                // Positions of edge blocks
-                public enum Pos
-                {
-                    // Front (face), left (edge), down
-                    FLD = 0,
-                    // Front (face), left (edge), up
-                    FLU,
-                    // Front (face), up (edge), left
-                    FUL,
-                    // Front (face), up (edge), right
-                    FUR,
-                    // Front (face), right (edge), up
-                    FRU,
-                    // Front (face), right (edge), down
-                    FRD,
-                    // Front (face), down (edge), right
-                    FDR,
-                    // Front (face), down (edge), left
-                    FDL,
-
-                    // Back (face), left (edge), down
-                    BLD,
-                    // Back (face), left (edge), up
-                    BLU,
-                    // Back (face), up (edge), left
-                    BUL,
-                    // Back (face), up (edge), right
-                    BUR,
-                    // Back (face), right (edge), up
-                    BRU,
-                    // Back (face), right (edge), down
-                    BRD,
-                    // Back (face), down (edge), right
-                    BDR,
-                    // Back (face), down (edge), left
-                    BDL,
-
-                    // Left (face), down (edge), front
-                    LDF,
-                    // Left (face), down (edge), back
-                    LDB,
-                    // Left (face), up (edge), front
-                    LUF,
-                    // Left (face), up (edge), back
-                    LUB,
-                    // Right (face), up (edge), front
-                    RUF,
-                    // Right (face), up (edge), back
-                    RUB,
-                    // Right (face), down (edge), front
-                    RDF,
-                    // Right (face), down (edge), back
-                    RDB,
-                }
-
-                // Index corresponds to enum Pos. Value too.
-                public int[] State = new int[Count]
-                {
-                    (int)Pos.FLD,
-                    (int)Pos.FLU,
-                    (int)Pos.FUL,
-                    (int)Pos.FUR,
-                    (int)Pos.FRU,
-                    (int)Pos.FRD,
-                    (int)Pos.FDR,
-                    (int)Pos.FDL,
-
-                    (int)Pos.BLD,
-                    (int)Pos.BLU,
-                    (int)Pos.BUL,
-                    (int)Pos.BUR,
-                    (int)Pos.BRU,
-                    (int)Pos.BRD,
-                    (int)Pos.BDR,
-                    (int)Pos.BDL,
-
-                    (int)Pos.LDF,
-                    (int)Pos.LDB,
-                    (int)Pos.LUF,
-                    (int)Pos.LUB,
-                    (int)Pos.RUF,
-                    (int)Pos.RUB,
-                    (int)Pos.RDF,
-                    (int)Pos.RDB,
-                };
-
-                public Edges()
-                {
-                    // Do nothing
-                }
-
-                public Edges(Edges other)
-                {
-                    Array.Copy(other.State, this.State, Count);
-                }
-
-                public Edges(int[] otherState)
-                {
-                    if (!Utils.IsIntPermutation(otherState, Count))
-                    {
-                        throw new ArgumentException();
-                    }
-
-                    this.State = (int[])otherState.Clone();
-                }
-
-                public static Edges Random()
-                {
-                    return new Edges(Utils.RandomIntPermutation(Count));
-                }
-
-                public override bool Equals(object obj)
-                {
-                    return Equals(obj as Edges);
-                }
-
-                public bool Equals(Edges obj)
-                {
-                    return obj != null ? State.SequenceEqual(obj.State) : false;
-                }
-
-                public override int GetHashCode()
-                {
-                    return Utils.GetHashCode(State);
-                }
+                Utils.DebugAssert(StandardCubeColor.GetLength(0) == Enum.GetNames(typeof(Axis)).Length);
+                Utils.DebugAssert(StandardCubeColor.GetLength(1) == Enum.GetNames(typeof(Direction)).Length);
             }
-
-            // The 6 * 4 face blocks
-            public class Faces : IEquatable<Faces>
-            {
-                public const int Count = 6 * 4;
-
-                // Positions of face blocks
-                public enum Pos
-                {
-                    // Front (face)
-                    FLU = 0,
-                    FRU,
-                    FRD,
-                    FLD,
-
-                    // Back (face)
-                    BLU,
-                    BRU,
-                    BRD,
-                    BLD,
-
-                    // Left (face)
-                    LBU,
-                    LFU,
-                    LFD,
-                    LBD,
-
-                    // Up (face)
-                    UBL,
-                    UBR,
-                    UFR,
-                    UFL,
-
-                    // Right (face)
-                    RBU,
-                    RFU,
-                    RFD,
-                    RBD,
-
-                    // Down (face)
-                    DBL,
-                    DBR,
-                    DFR,
-                    DFL,
-                }
-
-                // Index corresponds to enum Pos. Value too.
-                public int[] State = new int[Count]
-                {
-                    (int)Pos.FLU,
-                    (int)Pos.FRU,
-                    (int)Pos.FRD,
-                    (int)Pos.FLD,
-
-                    (int)Pos.BLU,
-                    (int)Pos.BRU,
-                    (int)Pos.BRD,
-                    (int)Pos.BLD,
-
-                    (int)Pos.LBU,
-                    (int)Pos.LFU,
-                    (int)Pos.LFD,
-                    (int)Pos.LBD,
-
-                    (int)Pos.UBL,
-                    (int)Pos.UBR,
-                    (int)Pos.UFR,
-                    (int)Pos.UFL,
-
-                    (int)Pos.RBU,
-                    (int)Pos.RFU,
-                    (int)Pos.RFD,
-                    (int)Pos.RBD,
-
-                    (int)Pos.DBL,
-                    (int)Pos.DBR,
-                    (int)Pos.DFR,
-                    (int)Pos.DFL,
-                };
-
-                public Faces()
-                {
-                    // Do nothing
-                }
-
-                public Faces(Faces other)
-                {
-                    Array.Copy(other.State, this.State, Count);
-                }
-
-                public Faces(int[] otherState)
-                {
-                    if (!Utils.IsIntPermutation(otherState, Count))
-                    {
-                        throw new ArgumentException();
-                    }
-
-                    this.State = (int[])otherState.Clone();
-                }
-
-                public static Faces Random()
-                {
-                    return new Faces(Utils.RandomIntPermutation(Count));
-                }
-
-                public override bool Equals(object obj)
-                {
-                    return Equals(obj as Faces);
-                }
-
-                public bool Equals(Faces obj)
-                {
-                    return obj != null ? State.SequenceEqual(obj.State) : false;
-                }
-
-                public override int GetHashCode()
-                {
-                    return Utils.GetHashCode(State);
-                }
-            }
-
-            public Corners corners = new Corners();
-            public Edges edges = new Edges();
-            public Faces faces = new Faces();
-
-            // Fields dedicated to accelerate array copy in Op_XX methods
-            private int[] OldCornerState;
-            private int[] OldEdgeState;
-            private int[] OldFaceState;
 
             public CubeState()
             {
-                CommonInit();
+                InitBlocksInStandardPosition();
             }
 
             public CubeState(CubeState other)
             {
-                this.corners = new Corners(other.corners);
-                this.edges = new Edges(other.edges);
-                this.faces = new Faces(other.faces);
-
-                CommonInit();
+                for (int i = 0; i < this.Blocks.Length; i++)
+                {
+                    this.Blocks[i] = new Block(other.Blocks[i]);
+                }
             }
 
-            public CubeState(Corners corners, Edges edges, Faces faces)
+            // Orientation: Green face to me, white face up (BOY color scheme).
+            // Checkout https://alg.cubing.net/?puzzle=4x4x4
+            private void InitBlocksInStandardPosition()
             {
-                this.corners = corners;
-                this.edges = edges;
-                this.faces = faces;
+                for (int i = 0; i < Blocks.Length; i++)
+                {
+                    Blocks[i] = new Block();
+                }
 
-                CommonInit();
+                //
+                // Init each block to correct position
+                //
+
+                {
+                    int blockIdx = 0;
+                    int[] position = new int[Enum.GetNames(typeof(Axis)).Length];
+                    for (position[(int)Axis.X] = -Level / 2;
+                            position[(int)Axis.X] <= Level / 2;
+                            position[(int)Axis.X]++)
+                    {
+                        for (position[(int)Axis.Y] = -Level / 2;
+                                position[(int)Axis.Y] <= Level / 2;
+                                position[(int)Axis.Y]++)
+                        {
+                            for (position[(int)Axis.Z] = -Level / 2;
+                                    position[(int)Axis.Z] <= Level / 2;
+                                    position[(int)Axis.Z]++)
+                            {
+                                if (!Block.IsValidPosition(position))
+                                {
+                                    continue;
+                                }
+
+                                Array.Copy(position, Blocks[blockIdx].Position, position.Length);
+                                blockIdx++;
+                            }
+                        }
+                    }
+                    Utils.DebugAssert(Blocks.Length == blockIdx);
+                }
+
+                //
+                // Init color on each cube face
+                //
+
+                {
+                    foreach (Axis axis in Enum.GetValues(typeof(Axis)))
+                    {
+                        foreach (Direction direction in Enum.GetValues(typeof(Direction)))
+                        {
+                            Color color = StandardCubeColor[(int)axis, (int)direction];
+                            foreach (int[] position in CubeFacePositions(axis, direction))
+                            {
+                                var block = GetBlockAt(position);
+                                Utils.DebugAssert(block != null);
+
+                                block.Color[(int)axis, (int)direction] = color;
+                            }
+                        }
+                    }
+                }
+
+                VerifyInvariants();
             }
 
-            private void CommonInit()
+            // An iterator to walk through all block positions on specified cube face
+            public IEnumerable<int[]> CubeFacePositions(Axis axis, Direction direction)
             {
-                OldCornerState = (int[])corners.State.Clone();
-                OldEdgeState = (int[])edges.State.Clone();
-                OldFaceState = (int[])faces.State.Clone();
+                int[] position = new int[Enum.GetNames(typeof(Axis)).Length];
+                switch (direction)
+                {
+                    case Direction.Positive:
+                        position[(int)axis] = Level / 2;
+                        break;
+                    case Direction.Negative:
+                        position[(int)axis] = -Level / 2;
+                        break;
+
+                    default:
+                        throw new ArgumentException();
+                }
+
+                List<Axis> remainingAxes = Enum.GetValues(typeof(Axis)).Cast<Axis>().ToList();
+                remainingAxes.Remove(axis);
+                Utils.DebugAssert(remainingAxes.Count == 2);
+
+                for (position[(int)remainingAxes[0]] = -Level / 2;
+                       position[(int)remainingAxes[0]] <= Level / 2;
+                       position[(int)remainingAxes[0]]++)
+                {
+                    for (position[(int)remainingAxes[1]] = -Level / 2;
+                            position[(int)remainingAxes[1]] <= Level / 2;
+                            position[(int)remainingAxes[1]]++)
+                    {
+                        if (!Block.IsValidPosition(position))
+                        {
+                            continue;
+                        }
+
+                        yield return position;
+                    }
+                }
             }
 
-            public static CubeState Random()
+            public Block GetBlockAt(int[] position)
             {
-                return new CubeState(Corners.Random(), Edges.Random(), Faces.Random());
+                foreach (var block in Blocks)
+                {
+                    if (Enumerable.SequenceEqual(block.Position, position))
+                    {
+                        return block;
+                    }
+                }
+
+                return null;
+            }
+
+            public void VerifyInvariants()
+            {
+                //
+                // No block is out of cube
+                //
+
+                foreach (var block in Blocks)
+                {
+                    foreach (Axis axis in Enum.GetValues(typeof(Axis)))
+                    {
+                        if (Math.Abs(block.Position[(int)axis]) > Level / 2)
+                        {
+                            throw new ArgumentException();
+                        }
+                    }
+                }
+
+                //
+                // All blocks at surface, and count matches corner, edge, face.
+                //
+
+                int[] typeBlockCount = new int[Enum.GetNames(typeof(Block.Type)).Length];
+                foreach (var block in Blocks)
+                {
+                    typeBlockCount[(int)block.GetBlockType()]++;
+                }
+
+                Utils.DebugAssert(typeBlockCount[(int)Block.Type.Corner] == CornerBlockCount);
+                Utils.DebugAssert(typeBlockCount[(int)Block.Type.Edge] == EdgeBlockCount);
+                Utils.DebugAssert(typeBlockCount[(int)Block.Type.Face] == FaceBlockCount);
+
+                //
+                // All block positions are valid
+                //
+
+                Utils.DebugAssert(Blocks.All(b => Block.IsValidPosition(b.Position)));
+
+                //
+                // Each cube face has full color
+                //
+
+                foreach (Axis axis in Enum.GetValues(typeof(Axis)))
+                {
+                    foreach (Direction direction in Enum.GetValues(typeof(Direction)))
+                    {
+                        foreach (int[] position in CubeFacePositions(axis, direction))
+                        {
+                            var block = GetBlockAt(position);
+                            Utils.DebugAssert(block.Color[(int)axis, (int)direction] != Color.None);
+                        }
+                    }
+                }
+
+                //
+                // Block's color side count equals all cube surface blocks,
+                // which means no block has color facing internal of cube.
+                //
+
+                int blockColorSideCount = 0;
+                foreach (var block in Blocks)
+                {
+                    foreach (Color color in block.Color)
+                    {
+                        if (color != Color.None)
+                        {
+                            blockColorSideCount++;
+                        }
+                    }
+                }
+
+                Utils.DebugAssert(FaceCount * Level * Level == blockColorSideCount);
+
+                //
+                // All color count are equal
+                //
+
+                int[] colorCount = new int[Enum.GetNames(typeof(Color)).Length];
+                foreach (var block in Blocks)
+                {
+                    foreach (Color color in block.Color)
+                    {
+                        colorCount[(int)color]++;
+                    }
+                }
+
+                foreach (Color color in Enum.GetValues(typeof(Color)))
+                {
+                    if (Color.None == color)
+                    {
+                        continue;
+                    }
+
+                    Utils.DebugAssert(Level * Level == colorCount[(int)color]);
+                }
+
+                //
+                // Corner block has 3 colors, edge block has 2 colors, face block has 1 color
+                //
+
+                foreach (var block in Blocks)
+                {
+                    var colors = block.GetSortedColors();
+                    Utils.DebugAssert(colors.Distinct().Count() == colors.Count);
+
+                    if (CornerBlockColorCount == colors.Count)
+                    {
+                        Utils.DebugAssert(block.GetBlockType() == Block.Type.Corner);
+                    }
+                    else if (EdgeBlockColorCount == colors.Count)
+                    {
+                        Utils.DebugAssert(block.GetBlockType() == Block.Type.Edge);
+                    }
+                    else if (FaceBlockColorCount == colors.Count)
+                    {
+                        Utils.DebugAssert(block.GetBlockType() == Block.Type.Face);
+                    }
+                    else
+                    {
+                        Utils.DebugAssert(false);
+                    }
+                }
+
+                //
+                // No corner block has same colors. Only 2 edge blocks have same colors.
+                // Only 4 face blocks have same colors.
+                //
+
+                Utils.DebugAssert(Blocks.Where(b => b.GetBlockType() == Block.Type.Corner)
+                    .GroupBy(b => b.GetSortedColors(), new Utils.ListEqualityComparator<Color>())
+                    .All(g => g.Count() == CornerBlockSameColorCount));
+
+                Utils.DebugAssert(Blocks.Where(b => b.GetBlockType() == Block.Type.Edge)
+                    .GroupBy(b => b.GetSortedColors(), new Utils.ListEqualityComparator<Color>())
+                    .All(g => g.Count() == EdgeBlockSameColorCount));
+
+                Utils.DebugAssert(Blocks.Where(b => b.GetBlockType() == Block.Type.Face)
+                    .GroupBy(b => b.GetSortedColors(), new Utils.ListEqualityComparator<Color>())
+                    .All(g => g.Count() == FaceBlockSameColorCount));
+            }
+
+            // If position[X] is null, it means matching anything
+            public IEnumerable<Block> BlocksMatchingPosition(int?[] position)
+            {
+                foreach (var block in Blocks)
+                {
+                    bool matched = true;
+                    foreach (Axis axis in Enum.GetValues(typeof(Axis)))
+                    {
+                        if (position[(int)axis].HasValue
+                            && position[(int)axis].Value != block.Position[(int)axis])
+                        {
+                            matched = false;
+                            break;
+                        }
+                    }
+
+                    if (matched)
+                    {
+                        yield return block;
+                    }
+                }
+            }
+
+            public IEnumerable<Block> BlocksAtPositions(IEnumerable<int[]> positions)
+            {
+                foreach (var position in positions)
+                {
+                    var block = GetBlockAt(position);
+                    if (block != null)
+                    {
+                        yield return block;
+                    }
+                }
+            }
+
+            public void Op_1F()
+            {
+                int?[] position = new int?[] { Level / 2, null, null };
+                foreach (var block in BlocksMatchingPosition(position))
+                {
+                    block.Rotate(Axis.X, Direction.Positive);
+                }
+            }
+
+            public void Op_2F()
+            {
+                int?[] position = new int?[] { Level / 2 - 1, null, null };
+                foreach (var block in BlocksMatchingPosition(position))
+                {
+                    block.Rotate(Axis.X, Direction.Positive);
+                }
+            }
+
+            public void Op_3F()
+            {
+                int?[] position = new int?[] { -Level / 2 + 1, null, null };
+                foreach (var block in BlocksMatchingPosition(position))
+                {
+                    block.Rotate(Axis.X, Direction.Positive);
+                }
+            }
+
+            public void Op_4F()
+            {
+                int?[] position = new int?[] { -Level / 2, null, null };
+                foreach (var block in BlocksMatchingPosition(position))
+                {
+                    block.Rotate(Axis.X, Direction.Positive);
+                }
+            }
+
+            public void Op_1U()
+            {
+                int?[] position = new int?[] { null, null, Level / 2 };
+                foreach (var block in BlocksMatchingPosition(position))
+                {
+                    block.Rotate(Axis.Z, Direction.Positive);
+                }
+            }
+
+            public void Op_2U()
+            {
+                int?[] position = new int?[] { null, null, Level / 2 - 1 };
+                foreach (var block in BlocksMatchingPosition(position))
+                {
+                    block.Rotate(Axis.Z, Direction.Positive);
+                }
+            }
+
+            public void Op_3U()
+            {
+                int?[] position = new int?[] { null, null, -Level / 2 + 1};
+                foreach (var block in BlocksMatchingPosition(position))
+                {
+                    block.Rotate(Axis.Z, Direction.Positive);
+                }
+            }
+
+            public void Op_4U()
+            {
+                int?[] position = new int?[] { null, null, -Level / 2 };
+                foreach (var block in BlocksMatchingPosition(position))
+                {
+                    block.Rotate(Axis.Z, Direction.Positive);
+                }
+            }
+
+            public void Op_1L()
+            {
+                int?[] position = new int?[] { null, -Level / 2, null };
+                foreach (var block in BlocksMatchingPosition(position))
+                {
+                    block.Rotate(Axis.Y, Direction.Negative);
+                }
+            }
+
+            public void Op_2L()
+            {
+                int?[] position = new int?[] { null, -Level / 2 + 1, null };
+                foreach (var block in BlocksMatchingPosition(position))
+                {
+                    block.Rotate(Axis.Y, Direction.Negative);
+                }
+            }
+
+            public void Op_3L()
+            {
+                int?[] position = new int?[] { null, Level / 2 - 1, null };
+                foreach (var block in BlocksMatchingPosition(position))
+                {
+                    block.Rotate(Axis.Y, Direction.Negative);
+                }
+            }
+
+            public void Op_4L()
+            {
+                int?[] position = new int?[] { null, Level / 2, null };
+                foreach (var block in BlocksMatchingPosition(position))
+                {
+                    block.Rotate(Axis.Y, Direction.Negative);
+                }
+            }
+
+            // Print specified cube surface
+            public string ToString(Axis axis, Direction direction)
+            {
+                StringBuilder strOut = new StringBuilder();
+                strOut.AppendLine($"Cube Face: Axis={axis}, Direction={direction}:");
+
+                int count = 0;
+                foreach (var block in BlocksAtPositions(CubeFacePositions(axis, direction)))
+                {
+                    strOut.Append($"{block.Color[(int)axis, (int)direction].ToString()[0]} ");
+
+                    count++;
+                    if (count % Level == 0)
+                    {
+                        strOut.AppendLine();
+                    }
+                }
+
+                return strOut.ToString();
+            }
+
+            public override string ToString()
+            {
+                StringBuilder strOut = new StringBuilder();
+                foreach (Axis axis in Enum.GetValues(typeof(Axis)))
+                {
+                    foreach (Direction direction in Enum.GetValues(typeof(Direction)))
+                    {
+                        strOut.AppendLine(ToString(axis, direction));
+                    }
+                }
+
+                return strOut.ToString();
             }
 
             public override bool Equals(object obj)
@@ -404,444 +884,47 @@ namespace GroupTheory_RubiksCube
                     return false;
                 }
 
-                return corners.Equals(obj.corners)
-                    && edges.Equals(obj.edges)
-                    && faces.Equals(obj.faces);
+                return Enumerable.SequenceEqual(this.Blocks, obj.Blocks);
             }
 
             public override int GetHashCode()
             {
-                // Convenient but bad frequent memory alloc
-                var array = new int[3]
-                {
-                    corners.GetHashCode(),
-                    edges.GetHashCode(),
-                    faces.GetHashCode()
-                };
-
-                return Utils.GetHashCode(array);
+                return Utils.GetHashCode(this.Blocks);
             }
 
-            private void UpdateOldStates()
+            public bool IsMine(Block other)
             {
-                Array.Copy(corners.State, OldCornerState, Corners.Count);
-                Array.Copy(edges.State, OldEdgeState, Edges.Count);
-                Array.Copy(faces.State, OldFaceState, Faces.Count);
+                return Blocks.Any(b => Object.ReferenceEquals(b, other));
             }
 
-            // Clock-wise turn 1st layer of front face by 90 degree
-            public void Op_1F()
+            public bool IsMine(IEnumerable<Block> other)
             {
-                UpdateOldStates();
-
-                {
-                    int[] oldCornerState = OldCornerState;
-
-                    corners.State[(int)Corners.Pos.FLU] = oldCornerState[(int)Corners.Pos.FLD];
-                    corners.State[(int)Corners.Pos.FRU] = oldCornerState[(int)Corners.Pos.FLU];
-                    corners.State[(int)Corners.Pos.FRD] = oldCornerState[(int)Corners.Pos.FRU];
-                    corners.State[(int)Corners.Pos.FLD] = oldCornerState[(int)Corners.Pos.FRD];
-                }
-
-                {
-                    int[] oldEdgeState = OldEdgeState;
-
-                    edges.State[(int)Edges.Pos.FLD] = oldEdgeState[(int)Edges.Pos.FDR];
-                    edges.State[(int)Edges.Pos.FLU] = oldEdgeState[(int)Edges.Pos.FDL];
-
-                    edges.State[(int)Edges.Pos.FUL] = oldEdgeState[(int)Edges.Pos.FLD];
-                    edges.State[(int)Edges.Pos.FUR] = oldEdgeState[(int)Edges.Pos.FLU];
-
-                    edges.State[(int)Edges.Pos.FRU] = oldEdgeState[(int)Edges.Pos.FUL];
-                    edges.State[(int)Edges.Pos.FRD] = oldEdgeState[(int)Edges.Pos.FUR];
-
-                    edges.State[(int)Edges.Pos.FDR] = oldEdgeState[(int)Edges.Pos.FRU];
-                    edges.State[(int)Edges.Pos.FDL] = oldEdgeState[(int)Edges.Pos.FRD];
-                }
-
-                {
-                    int[] oldFaceState = OldFaceState;
-
-                    faces.State[(int)Faces.Pos.FLU] = oldFaceState[(int)Faces.Pos.FLD];
-                    faces.State[(int)Faces.Pos.FRU] = oldFaceState[(int)Faces.Pos.FLU];
-                    faces.State[(int)Faces.Pos.FRD] = oldFaceState[(int)Faces.Pos.FRU];
-                    faces.State[(int)Faces.Pos.FLD] = oldFaceState[(int)Faces.Pos.FRD];
-                }
+                return other.All(o => Blocks.Any(b => Object.ReferenceEquals(b, o)));
             }
 
-            public void Op_2F()
+            public bool IsSameBlockArrangement(CubeState other)
             {
-                UpdateOldStates();
-
+                if (this.Blocks.Length != other.Blocks.Length)
                 {
-                    int[] oldEdgeState = OldEdgeState;
-
-                    edges.State[(int)Edges.Pos.LUF] = oldEdgeState[(int)Edges.Pos.LDF];
-                    edges.State[(int)Edges.Pos.RUF] = oldEdgeState[(int)Edges.Pos.LUF];
-                    edges.State[(int)Edges.Pos.RDF] = oldEdgeState[(int)Edges.Pos.RUF];
-                    edges.State[(int)Edges.Pos.LDF] = oldEdgeState[(int)Edges.Pos.RDF];
+                    return false;
                 }
 
+                for (int i = 0; i < this.Blocks.Length; i++)
                 {
-                    int[] oldFaceState = OldFaceState;
+                    Block myBlock = this.Blocks[i];
+                    Block otherBlock = other.Blocks[i];
 
-                    faces.State[(int)Faces.Pos.LFD] = oldFaceState[(int)Faces.Pos.DFR];
-                    faces.State[(int)Faces.Pos.LFU] = oldFaceState[(int)Faces.Pos.DFL];
-
-                    faces.State[(int)Faces.Pos.UFL] = oldFaceState[(int)Faces.Pos.LFD];
-                    faces.State[(int)Faces.Pos.UFR] = oldFaceState[(int)Faces.Pos.LFU];
-
-                    faces.State[(int)Faces.Pos.RFU] = oldFaceState[(int)Faces.Pos.UFL];
-                    faces.State[(int)Faces.Pos.RFD] = oldFaceState[(int)Faces.Pos.UFR];
-
-                    faces.State[(int)Faces.Pos.DFR] = oldFaceState[(int)Faces.Pos.RFU];
-                    faces.State[(int)Faces.Pos.DFL] = oldFaceState[(int)Faces.Pos.RFD];
-                }
-            }
-
-            public void Op_3F()
-            {
-                UpdateOldStates();
-
-                {
-                    int[] oldEdgeState = OldEdgeState;
-
-                    edges.State[(int)Edges.Pos.LUB] = oldEdgeState[(int)Edges.Pos.LDB];
-                    edges.State[(int)Edges.Pos.RUB] = oldEdgeState[(int)Edges.Pos.LUB];
-                    edges.State[(int)Edges.Pos.RDB] = oldEdgeState[(int)Edges.Pos.RUB];
-                    edges.State[(int)Edges.Pos.LDB] = oldEdgeState[(int)Edges.Pos.RDB];
+                    if (myBlock.GetBlockType() != otherBlock.GetBlockType())
+                    {
+                        return false;
+                    }
+                    if (!myBlock.GetSortedColors().SequenceEqual(otherBlock.GetSortedColors()))
+                    {
+                        return false;
+                    }
                 }
 
-                {
-                    int[] oldFaceState = OldFaceState;
-
-                    faces.State[(int)Faces.Pos.LBD] = oldFaceState[(int)Faces.Pos.DBR];
-                    faces.State[(int)Faces.Pos.LBU] = oldFaceState[(int)Faces.Pos.DBL];
-
-                    faces.State[(int)Faces.Pos.UBL] = oldFaceState[(int)Faces.Pos.LBD];
-                    faces.State[(int)Faces.Pos.UBR] = oldFaceState[(int)Faces.Pos.LBU];
-
-                    faces.State[(int)Faces.Pos.RBU] = oldFaceState[(int)Faces.Pos.UBL];
-                    faces.State[(int)Faces.Pos.RBD] = oldFaceState[(int)Faces.Pos.UBR];
-
-                    faces.State[(int)Faces.Pos.DBR] = oldFaceState[(int)Faces.Pos.RBU];
-                    faces.State[(int)Faces.Pos.DBL] = oldFaceState[(int)Faces.Pos.RBD];
-                }
-            }
-
-            public void Op_4F()
-            {
-                UpdateOldStates();
-
-                {
-                    int[] oldCornerState = OldCornerState;
-
-                    corners.State[(int)Corners.Pos.BLU] = oldCornerState[(int)Corners.Pos.BLD];
-                    corners.State[(int)Corners.Pos.BRU] = oldCornerState[(int)Corners.Pos.BLU];
-                    corners.State[(int)Corners.Pos.BRD] = oldCornerState[(int)Corners.Pos.BRU];
-                    corners.State[(int)Corners.Pos.BLD] = oldCornerState[(int)Corners.Pos.BRD];
-                }
-
-                {
-                    int[] oldEdgeState = OldEdgeState;
-
-                    edges.State[(int)Edges.Pos.BLD] = oldEdgeState[(int)Edges.Pos.BDR];
-                    edges.State[(int)Edges.Pos.BLU] = oldEdgeState[(int)Edges.Pos.BDL];
-
-                    edges.State[(int)Edges.Pos.BUL] = oldEdgeState[(int)Edges.Pos.BLD];
-                    edges.State[(int)Edges.Pos.BUR] = oldEdgeState[(int)Edges.Pos.BLU];
-
-                    edges.State[(int)Edges.Pos.BRU] = oldEdgeState[(int)Edges.Pos.BUL];
-                    edges.State[(int)Edges.Pos.BRD] = oldEdgeState[(int)Edges.Pos.BUR];
-
-                    edges.State[(int)Edges.Pos.BDR] = oldEdgeState[(int)Edges.Pos.BRU];
-                    edges.State[(int)Edges.Pos.BDL] = oldEdgeState[(int)Edges.Pos.BRD];
-                }
-
-                {
-                    int[] oldFaceState = OldFaceState;
-
-                    faces.State[(int)Faces.Pos.BLU] = oldFaceState[(int)Faces.Pos.BLD];
-                    faces.State[(int)Faces.Pos.BRU] = oldFaceState[(int)Faces.Pos.BLU];
-                    faces.State[(int)Faces.Pos.BRD] = oldFaceState[(int)Faces.Pos.BRU];
-                    faces.State[(int)Faces.Pos.BLD] = oldFaceState[(int)Faces.Pos.BRD];
-                }
-            }
-
-            public void Op_1U()
-            {
-                UpdateOldStates();
-
-                {
-                    int[] oldCornerState = OldCornerState;
-
-                    corners.State[(int)Corners.Pos.BLU] = oldCornerState[(int)Corners.Pos.FLU];
-                    corners.State[(int)Corners.Pos.BRU] = oldCornerState[(int)Corners.Pos.BLU];
-                    corners.State[(int)Corners.Pos.FRU] = oldCornerState[(int)Corners.Pos.BRU];
-                    corners.State[(int)Corners.Pos.FLU] = oldCornerState[(int)Corners.Pos.FRU];
-                }
-
-                {
-                    int[] oldEdgeState = OldEdgeState;
-
-                    edges.State[(int)Edges.Pos.LUF] = oldEdgeState[(int)Edges.Pos.FUR];
-                    edges.State[(int)Edges.Pos.LUB] = oldEdgeState[(int)Edges.Pos.FUL];
-
-                    edges.State[(int)Edges.Pos.BUL] = oldEdgeState[(int)Edges.Pos.LUF];
-                    edges.State[(int)Edges.Pos.BUR] = oldEdgeState[(int)Edges.Pos.LUB];
-
-                    edges.State[(int)Edges.Pos.RUB] = oldEdgeState[(int)Edges.Pos.BUL];
-                    edges.State[(int)Edges.Pos.RUF] = oldEdgeState[(int)Edges.Pos.BUR];
-
-                    edges.State[(int)Edges.Pos.FUR] = oldEdgeState[(int)Edges.Pos.RUB];
-                    edges.State[(int)Edges.Pos.FUL] = oldEdgeState[(int)Edges.Pos.RUF];
-                }
-
-                {
-                    int[] oldFaceState = OldFaceState;
-
-                    faces.State[(int)Faces.Pos.UBL] = oldFaceState[(int)Faces.Pos.UFL];
-                    faces.State[(int)Faces.Pos.UBR] = oldFaceState[(int)Faces.Pos.UBL];
-                    faces.State[(int)Faces.Pos.UFR] = oldFaceState[(int)Faces.Pos.UBR];
-                    faces.State[(int)Faces.Pos.UFL] = oldFaceState[(int)Faces.Pos.UFR];
-                }
-            }
-
-            public void Op_2U()
-            {
-                UpdateOldStates();
-
-                {
-                    int[] oldEdgeState = OldEdgeState;
-
-                    edges.State[(int)Edges.Pos.BLU] = oldEdgeState[(int)Edges.Pos.FLU];
-                    edges.State[(int)Edges.Pos.BRU] = oldEdgeState[(int)Edges.Pos.BLU];
-                    edges.State[(int)Edges.Pos.FRU] = oldEdgeState[(int)Edges.Pos.BRU];
-                    edges.State[(int)Edges.Pos.FLU] = oldEdgeState[(int)Edges.Pos.FRU];
-                }
-
-                {
-                    int[] oldFaceState = OldFaceState;
-
-                    faces.State[(int)Faces.Pos.LFU] = oldFaceState[(int)Faces.Pos.FRU];
-                    faces.State[(int)Faces.Pos.LBU] = oldFaceState[(int)Faces.Pos.FLU];
-
-                    faces.State[(int)Faces.Pos.BLU] = oldFaceState[(int)Faces.Pos.LFU];
-                    faces.State[(int)Faces.Pos.BRU] = oldFaceState[(int)Faces.Pos.LBU];
-
-                    faces.State[(int)Faces.Pos.RBU] = oldFaceState[(int)Faces.Pos.BLU];
-                    faces.State[(int)Faces.Pos.RFU] = oldFaceState[(int)Faces.Pos.BRU];
-
-                    faces.State[(int)Faces.Pos.FRU] = oldFaceState[(int)Faces.Pos.RBU];
-                    faces.State[(int)Faces.Pos.FLU] = oldFaceState[(int)Faces.Pos.RFU];
-                }
-            }
-
-            public void Op_3U()
-            {
-                UpdateOldStates();
-
-                {
-                    int[] oldEdgeState = OldEdgeState;
-
-                    edges.State[(int)Edges.Pos.BLD] = oldEdgeState[(int)Edges.Pos.FLD];
-                    edges.State[(int)Edges.Pos.BRD] = oldEdgeState[(int)Edges.Pos.BLD];
-                    edges.State[(int)Edges.Pos.FRD] = oldEdgeState[(int)Edges.Pos.BRD];
-                    edges.State[(int)Edges.Pos.FLD] = oldEdgeState[(int)Edges.Pos.FRD];
-                }
-
-                {
-                    int[] oldFaceState = OldFaceState;
-
-                    faces.State[(int)Faces.Pos.LFD] = oldFaceState[(int)Faces.Pos.FRD];
-                    faces.State[(int)Faces.Pos.LBD] = oldFaceState[(int)Faces.Pos.FLD];
-
-                    faces.State[(int)Faces.Pos.BLD] = oldFaceState[(int)Faces.Pos.LFD];
-                    faces.State[(int)Faces.Pos.BRD] = oldFaceState[(int)Faces.Pos.LBD];
-
-                    faces.State[(int)Faces.Pos.RBD] = oldFaceState[(int)Faces.Pos.BLD];
-                    faces.State[(int)Faces.Pos.RFD] = oldFaceState[(int)Faces.Pos.BRD];
-
-                    faces.State[(int)Faces.Pos.FRD] = oldFaceState[(int)Faces.Pos.RBD];
-                    faces.State[(int)Faces.Pos.FLD] = oldFaceState[(int)Faces.Pos.RFD];
-                }
-            }
-
-            public void Op_4U()
-            {
-                UpdateOldStates();
-
-                {
-                    int[] oldCornerState = OldCornerState;
-
-                    corners.State[(int)Corners.Pos.BLD] = oldCornerState[(int)Corners.Pos.FLD];
-                    corners.State[(int)Corners.Pos.BRD] = oldCornerState[(int)Corners.Pos.BLD];
-                    corners.State[(int)Corners.Pos.FRD] = oldCornerState[(int)Corners.Pos.BRD];
-                    corners.State[(int)Corners.Pos.FLD] = oldCornerState[(int)Corners.Pos.FRD];
-                }
-
-                {
-                    int[] oldEdgeState = OldEdgeState;
-
-                    edges.State[(int)Edges.Pos.LDF] = oldEdgeState[(int)Edges.Pos.FDR];
-                    edges.State[(int)Edges.Pos.LDB] = oldEdgeState[(int)Edges.Pos.FDL];
-
-                    edges.State[(int)Edges.Pos.BDL] = oldEdgeState[(int)Edges.Pos.LDF];
-                    edges.State[(int)Edges.Pos.BDR] = oldEdgeState[(int)Edges.Pos.LDB];
-
-                    edges.State[(int)Edges.Pos.RDB] = oldEdgeState[(int)Edges.Pos.BDL];
-                    edges.State[(int)Edges.Pos.RDF] = oldEdgeState[(int)Edges.Pos.BDR];
-
-                    edges.State[(int)Edges.Pos.FDR] = oldEdgeState[(int)Edges.Pos.RDB];
-                    edges.State[(int)Edges.Pos.FDL] = oldEdgeState[(int)Edges.Pos.RDF];
-                }
-
-                {
-                    int[] oldFaceState = OldFaceState;
-
-                    faces.State[(int)Faces.Pos.DBL] = oldFaceState[(int)Faces.Pos.DFL];
-                    faces.State[(int)Faces.Pos.DBR] = oldFaceState[(int)Faces.Pos.DBL];
-                    faces.State[(int)Faces.Pos.DFR] = oldFaceState[(int)Faces.Pos.DBR];
-                    faces.State[(int)Faces.Pos.DFL] = oldFaceState[(int)Faces.Pos.DFR];
-                }
-            }
-
-            public void Op_1L()
-            {
-                UpdateOldStates();
-
-                {
-                    int[] oldCornerState = OldCornerState;
-
-                    corners.State[(int)Corners.Pos.BLU] = oldCornerState[(int)Corners.Pos.BLD];
-                    corners.State[(int)Corners.Pos.FLU] = oldCornerState[(int)Corners.Pos.BLU];
-                    corners.State[(int)Corners.Pos.FLD] = oldCornerState[(int)Corners.Pos.FLU];
-                    corners.State[(int)Corners.Pos.BLD] = oldCornerState[(int)Corners.Pos.FLD];
-                }
-
-                {
-                    int[] oldEdgeState = OldEdgeState;
-
-                    edges.State[(int)Edges.Pos.LUB] = oldEdgeState[(int)Edges.Pos.BLD];
-                    edges.State[(int)Edges.Pos.LUF] = oldEdgeState[(int)Edges.Pos.BLU];
-
-                    edges.State[(int)Edges.Pos.FLU] = oldEdgeState[(int)Edges.Pos.LUB];
-                    edges.State[(int)Edges.Pos.FLD] = oldEdgeState[(int)Edges.Pos.LUF];
-
-                    edges.State[(int)Edges.Pos.LDF] = oldEdgeState[(int)Edges.Pos.FLU];
-                    edges.State[(int)Edges.Pos.LDB] = oldEdgeState[(int)Edges.Pos.FLD];
-
-                    edges.State[(int)Edges.Pos.BLD] = oldEdgeState[(int)Edges.Pos.LDF];
-                    edges.State[(int)Edges.Pos.BLU] = oldEdgeState[(int)Edges.Pos.LDB];
-                }
-
-                {
-                    int[] oldFaceState = OldFaceState;
-
-                    faces.State[(int)Faces.Pos.LBU] = oldFaceState[(int)Faces.Pos.LBD];
-                    faces.State[(int)Faces.Pos.LFU] = oldFaceState[(int)Faces.Pos.LBU];
-                    faces.State[(int)Faces.Pos.LFD] = oldFaceState[(int)Faces.Pos.LFU];
-                    faces.State[(int)Faces.Pos.LBD] = oldFaceState[(int)Faces.Pos.LFD];
-                }
-            }
-
-            public void Op_2L()
-            {
-                UpdateOldStates();
-
-                {
-                    int[] oldEdgeState = OldEdgeState;
-
-                    edges.State[(int)Edges.Pos.BUL] = oldEdgeState[(int)Edges.Pos.BDL];
-                    edges.State[(int)Edges.Pos.FUL] = oldEdgeState[(int)Edges.Pos.BUL];
-                    edges.State[(int)Edges.Pos.FDL] = oldEdgeState[(int)Edges.Pos.FUL];
-                    edges.State[(int)Edges.Pos.BDL] = oldEdgeState[(int)Edges.Pos.FDL];
-                }
-
-                {
-                    int[] oldFaceState = OldFaceState;
-
-                    faces.State[(int)Faces.Pos.UBL] = oldFaceState[(int)Faces.Pos.BLD];
-                    faces.State[(int)Faces.Pos.UFL] = oldFaceState[(int)Faces.Pos.BLU];
-
-                    faces.State[(int)Faces.Pos.FLU] = oldFaceState[(int)Faces.Pos.UBL];
-                    faces.State[(int)Faces.Pos.FLD] = oldFaceState[(int)Faces.Pos.UFL];
-
-                    faces.State[(int)Faces.Pos.DFL] = oldFaceState[(int)Faces.Pos.FLU];
-                    faces.State[(int)Faces.Pos.DBL] = oldFaceState[(int)Faces.Pos.FLD];
-
-                    faces.State[(int)Faces.Pos.BLD] = oldFaceState[(int)Faces.Pos.DFL];
-                    faces.State[(int)Faces.Pos.BLU] = oldFaceState[(int)Faces.Pos.DBL];
-                }
-            }
-
-            public void Op_3L()
-            {
-                UpdateOldStates();
-
-                {
-                    int[] oldEdgeState = OldEdgeState;
-
-                    edges.State[(int)Edges.Pos.BUR] = oldEdgeState[(int)Edges.Pos.BDR];
-                    edges.State[(int)Edges.Pos.FUR] = oldEdgeState[(int)Edges.Pos.BUR];
-                    edges.State[(int)Edges.Pos.FDR] = oldEdgeState[(int)Edges.Pos.FUR];
-                    edges.State[(int)Edges.Pos.BDR] = oldEdgeState[(int)Edges.Pos.FDR];
-                }
-
-                {
-                    int[] oldFaceState = OldFaceState;
-
-                    faces.State[(int)Faces.Pos.UBR] = oldFaceState[(int)Faces.Pos.BRD];
-                    faces.State[(int)Faces.Pos.UFR] = oldFaceState[(int)Faces.Pos.BRU];
-
-                    faces.State[(int)Faces.Pos.FRU] = oldFaceState[(int)Faces.Pos.UBR];
-                    faces.State[(int)Faces.Pos.FRD] = oldFaceState[(int)Faces.Pos.UFR];
-
-                    faces.State[(int)Faces.Pos.DFR] = oldFaceState[(int)Faces.Pos.FRU];
-                    faces.State[(int)Faces.Pos.DBR] = oldFaceState[(int)Faces.Pos.FRD];
-
-                    faces.State[(int)Faces.Pos.BRD] = oldFaceState[(int)Faces.Pos.DFR];
-                    faces.State[(int)Faces.Pos.BRU] = oldFaceState[(int)Faces.Pos.DBR];
-                }
-            }
-
-            public void Op_4L()
-            {
-                UpdateOldStates();
-
-                {
-                    int[] oldCornerState = OldCornerState;
-
-                    corners.State[(int)Corners.Pos.BRU] = oldCornerState[(int)Corners.Pos.BRD];
-                    corners.State[(int)Corners.Pos.FRU] = oldCornerState[(int)Corners.Pos.BRU];
-                    corners.State[(int)Corners.Pos.FRD] = oldCornerState[(int)Corners.Pos.FRU];
-                    corners.State[(int)Corners.Pos.BRD] = oldCornerState[(int)Corners.Pos.FRD];
-                }
-
-                {
-                    int[] oldEdgeState = OldEdgeState;
-
-                    edges.State[(int)Edges.Pos.RUB] = oldEdgeState[(int)Edges.Pos.BRD];
-                    edges.State[(int)Edges.Pos.RUF] = oldEdgeState[(int)Edges.Pos.BRU];
-
-                    edges.State[(int)Edges.Pos.FRU] = oldEdgeState[(int)Edges.Pos.RUB];
-                    edges.State[(int)Edges.Pos.FRD] = oldEdgeState[(int)Edges.Pos.RUF];
-
-                    edges.State[(int)Edges.Pos.RDF] = oldEdgeState[(int)Edges.Pos.FRU];
-                    edges.State[(int)Edges.Pos.RDB] = oldEdgeState[(int)Edges.Pos.FRD];
-
-                    edges.State[(int)Edges.Pos.BRD] = oldEdgeState[(int)Edges.Pos.RDF];
-                    edges.State[(int)Edges.Pos.BRU] = oldEdgeState[(int)Edges.Pos.RDB];
-                }
-
-                {
-                    int[] oldFaceState = OldFaceState;
-
-                    faces.State[(int)Faces.Pos.RBU] = oldFaceState[(int)Faces.Pos.RBD];
-                    faces.State[(int)Faces.Pos.RFU] = oldFaceState[(int)Faces.Pos.RBU];
-                    faces.State[(int)Faces.Pos.RFD] = oldFaceState[(int)Faces.Pos.RFU];
-                    faces.State[(int)Faces.Pos.RBD] = oldFaceState[(int)Faces.Pos.RFD];
-                }
+                return true;
             }
         }
     }

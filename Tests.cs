@@ -1,4 +1,5 @@
-﻿
+﻿using System;
+
 namespace GroupTheory_RubiksCube
 {
     namespace level4
@@ -7,10 +8,63 @@ namespace GroupTheory_RubiksCube
         {
             public static void VerifyAll()
             {
+                Console.WriteLine("GroupTests: VerifyBlockTurnAround ...");
+                VerifyBlockTurnAround();
+
+                Console.WriteLine("GroupTests: VerifyCubeTurnAround ...");
+                VerifyCubeTurnAround();
+
+                Console.WriteLine("GroupTests: VerifyAssociaty ...");
                 VerifyAssociaty();
+
+                Console.WriteLine("GroupTests: VerifyIdentity ...");
                 VerifyIdentity();
+
+                Console.WriteLine("GroupTests: VerifyReverse ...");
                 VerifyReverse();
+
+                Console.WriteLine("GroupTests: VerifyGroupActionAssociaty ...");
                 VerifyGroupActionAssociaty();
+            }
+
+            public static void VerifyBlockTurnAround()
+            {
+                for (int caseIdx = 0; caseIdx < 100; caseIdx++)
+                {
+                    CubeState.Block block = CubeState.Block.Random();
+                    foreach (CubeState.Axis axis in Enum.GetValues(typeof(CubeState.Axis)))
+                    {
+                        foreach (CubeState.Direction direction in Enum.GetValues(typeof(CubeState.Direction)))
+                        {
+                            CubeState.Block newBlock = new CubeState.Block(block);
+                            for (int i = 0; i < CubeState.TurnAround; i++)
+                            {
+                                newBlock.Rotate(axis, direction);
+                            }
+
+                            Utils.DebugAssert(newBlock.Equals(block));
+                        }
+                    }
+                }
+            }
+            public static void VerifyCubeTurnAround()
+            {
+                for (int caseIdx = 0; caseIdx < 100; caseIdx++)
+                {
+                    CubeState cubeState = CubeAction.RandomCube(Utils.GlobalRandom.Next(1, 30));
+                    foreach (CubeOp.Type op in Enum.GetValues(typeof(CubeOp.Type)))
+                    {
+                        var action = new CubeAction(new int[] { (int)op });
+                        CubeState newCubeState = new CubeState(cubeState);
+
+                        for (int i = 0; i < CubeState.TurnAround; i++)
+                        {
+                            action.Act(newCubeState);
+                        }
+
+                        Utils.DebugAssert(newCubeState.Equals(cubeState));
+                    }
+                }
             }
 
             public static void VerifyAssociaty()
@@ -71,7 +125,7 @@ namespace GroupTheory_RubiksCube
                     CubeAction ab = a.Mul(b);
                     CubeAction bc = b.Mul(c);
 
-                    CubeState origState = CubeState.Random();
+                    CubeState origState = CubeAction.RandomCube(Utils.GlobalRandom.Next(1, 20));
 
                     CubeState a_b_c_state = new CubeState(origState);
                     c.Act(a_b_c_state);

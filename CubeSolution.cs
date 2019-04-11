@@ -10,39 +10,38 @@ namespace GroupTheory_RubiksCube
         {
             public class GStep
             {
-                public PositionSet StablizedPos;
+                public BlockSet Stablized;
                 public List<CubeAction> Generators;
 
-                public PositionSet NextToStablizePos;
-                public Dictionary<PositionSet, CubeAction> OrbitToCoset;
+                public BlockSet ToStablize;
+                public Dictionary<BlockSet, CubeAction> OrbitToCoset;
 
-                public GStep(PositionSet stablizedPos, IEnumerable<CubeAction> generators)
+                public GStep(BlockSet stablized, IEnumerable<CubeAction> generators)
                 {
-                    StablizedPos = new PositionSet(stablizedPos);
+                    Stablized = new BlockSet(stablized);
                     Generators = new List<CubeAction>(generators);
                 }
 
-                public GStep CalculateGNext(PositionSet nextToStablizePos)
+                public GStep CalculateGNext(BlockSet toStablize)
                 {
-                    if (StablizedPos.Positions.Intersect(nextToStablizePos.Positions).Count() > 0)
-                    {
-                        throw new ArgumentException();
-                    }
-                    if (nextToStablizePos.Positions.Count() <= 0)
+                    if (toStablize.Indexes.Count() <= 0)
                     {
                         throw new ArgumentException();
                     }
 
-                    NextToStablizePos = nextToStablizePos;
-                    OrbitToCoset = ExploreOrbitToCoset(StablizedPos, Generators, nextToStablizePos);
+                    // Also verifies whether valid to merge
+                    var gNextStablizedPos = Stablized.Merge(toStablize);
 
-                    var gNextGenerators = ObtainGeneratorsOfStablizerSubgroup(Generators, nextToStablizePos, OrbitToCoset);
-                    var gNextStablizedPos = StablizedPos.Merge(nextToStablizePos);
+                    OrbitToCoset = ExploreOrbitToCoset(Stablized, Generators, toStablize);
+                    ToStablize = toStablize;
 
+                    var gNextGenerators = ObtainGeneratorsOfStablizerSubgroup(Generators, toStablize, OrbitToCoset);
                     return new GStep(gNextStablizedPos, gNextGenerators);
                 }
 
                 /// <summary>
+                /// // TODO revise
+                /// 
                 /// By (slightly changed version of) Prop 4.7 in Group Theory J.S. Milne, we know the
                 /// orbit of the positions we are observing, is 1-on-1 mapping to the set of *right* cosets
                 /// divided by stablizer subgroup of the positions we are observing.
@@ -51,56 +50,57 @@ namespace GroupTheory_RubiksCube
                 /// we can discover each of the cosets of the stablizer subgroup, which will later be input
                 /// into Schreier subgroup lemma to obtain the stablizer subgroup's generators.
                 /// </summary>
-                private static Dictionary<PositionSet, CubeAction> ExploreOrbitToCoset(
-                    PositionSet stablizedPos,
+                private static Dictionary<BlockSet, CubeAction> ExploreOrbitToCoset(
+                    BlockSet stablized,
                     IEnumerable<CubeAction> generators,
-                    PositionSet observedPos)
+                    BlockSet observed)
                 {
-                    if (stablizedPos.Positions.Intersect(observedPos.Positions).Count() > 0)
+                    var orbitToCoset = new Dictionary<BlockSet, CubeAction>()
                     {
-                        throw new ArgumentException();
-                    }
-
-                    var orbitToCoset = new Dictionary<PositionSet, CubeAction>()
-                    {
-                        { new PositionSet(observedPos), new CubeAction() }
+                        { new BlockSet(observed), new CubeAction() }
                     };
 
-                    var fullyWalkedStates = new HashSet<PositionSet>();
+                    var fullyWalkedStates = new HashSet<BlockSet>();
                     while (true)
                     {
-                        int foundCount = 0;
-                        var needWalkStates = new HashSet<PositionSet>(orbitToCoset.Keys);
+                        var needWalkStates = new HashSet<BlockSet>(orbitToCoset.Keys);
                         needWalkStates.RemoveWhere(x => fullyWalkedStates.Contains(x));
+
+                        int foundCount = 0;
                         int walkedCount = 0;
-                        foreach (var s in needWalkStates)
+
+                        foreach (var startState in needWalkStates)
                         {
                             walkedCount++;
-                            var actionS = orbitToCoset[s];
+
+                            var startAction = orbitToCoset[startState];
                             foreach (var g in generators)
                             {
-                                var newS = new PositionSet(s);
-                                g.Act(newS.State);
+                                var newState = new BlockSet(startState);
+                                g.Act(newState.State);
 
-                                foreach (var stablePos in stablizedPos.Positions)
+                                // To verify generators truely stablizes Stablized BlockSet
+                                foreach (var stablePos in stablized.Indexes)
                                 {
-                                    if (newS.GetState(stablePos) != s.GetState(stablePos))
+                                    if (!newState.State.Blocks[stablePos]
+                                        .Equals(startState.State.Blocks[stablePos]))
                                     {
                                         throw new ArgumentException();
                                     }
                                 }
 
-                                if (!orbitToCoset.ContainsKey(newS))
+                                if (!orbitToCoset.ContainsKey(newState))
                                 {
                                     foundCount++;
-                                    var actionNewS = g.Mul(actionS);
-                                    orbitToCoset.Add(newS, actionNewS);
+
+                                    var newAction = g.Mul(startAction);
+                                    orbitToCoset.Add(newState, newAction);
 
                                     Console.WriteLine(
                                         $"ExploreOrbitToCoset: foundCount/needWalk/total=" +
                                         $"{foundCount}/{needWalkStates.Count - walkedCount}/{orbitToCoset.Count} " +
-                                        $"total/stateNew/actionNew={orbitToCoset.Count}/[{newS}]/[{actionNewS}] " +
-                                        $"s=[{s}] g=[{g}]");
+                                        $"newState=[{newState}] newAction=[{newAction}] " +
+                                        $"startState=[{startState}] generator=[{g}]");
                                 }
                             }
                         }
@@ -122,37 +122,25 @@ namespace GroupTheory_RubiksCube
                 /// </summary>
                 private static List<CubeAction> ObtainGeneratorsOfStablizerSubgroup(
                     IEnumerable<CubeAction> groupGenerators,
-                    PositionSet subgroupStablizedPos,
-                    Dictionary<PositionSet, CubeAction> orbitToCoset)
+                    BlockSet subgroupStablized,
+                    Dictionary<BlockSet, CubeAction> orbitToCoset)
                 {
                     var subgroupGenerators = new HashSet<CubeAction>();
                     int count = 0;
                     foreach (var s in groupGenerators)
                     {
-                        foreach (var rightCoset in orbitToCoset.Values)
+                        foreach (var leftCoset in orbitToCoset.Values)
                         {
                             count++;
 
-                            // Note, here is the magic. Schreier subgroup lemma listed in
-                            // https://www.jaapsch.net/puzzles/schreier.htm requires *left* coset (gH)
-                            // representatives. But orbitToCoset gives *right* cosets. We can prove that,
-                            // left and right coset representatives are 1-to-1 mapping by ^(-1).
-                            //
-                            // (Alternatively, we can alter Schreier subgroup lemma to use right cosets.
-                            // the format should be like { rs * [rs]^(-1) | r in R, s in S }.)
-                            var leftCoset = rightCoset.Reverse();
-
                             var sr = s.Mul(leftCoset);
-
-                            // We want sr's left coset representative, but we can only lookup right coset's
-                            var rsr = sr.Reverse();
-                            var rCosetReprSr = DetermineBelongingCoset(
-                                    subgroupStablizedPos, orbitToCoset, rsr);
+                            var cosetReprSr = DetermineBelongingCoset(subgroupStablized, orbitToCoset, sr);
+                            var rCosetReprSr = cosetReprSr.Reverse();
 
                             var subgroupGenerator = rCosetReprSr.Mul(sr);
                             if (!subgroupGenerators.Contains(subgroupGenerator))
                             {
-                                Utils.DebugAssert(PositionSet.IsStablized(subgroupGenerator, subgroupStablizedPos));
+                                Utils.DebugAssert(subgroupStablized.IsStablizedBy(subgroupGenerator));
 
                                 subgroupGenerators.Add(subgroupGenerator);
                                 Console.WriteLine(
@@ -173,146 +161,108 @@ namespace GroupTheory_RubiksCube
                 }
 
                 private static CubeAction DetermineBelongingCoset(
-                    PositionSet observedPos,
-                    Dictionary<PositionSet, CubeAction> orbitToCoset,
+                    BlockSet observed,
+                    Dictionary<BlockSet, CubeAction> orbitToCoset,
                     CubeAction e)
                 {
-                    var ePos = new PositionSet(observedPos);
+                    var ePos = new BlockSet(observed);
                     e.Act(ePos.State);
 
                     Utils.DebugAssert(orbitToCoset.ContainsKey(ePos));
                     var cosetRepresentative = orbitToCoset[ePos];
 
                     {
-                        var cosetReprPos = new PositionSet(observedPos);
+                        var cosetReprPos = new BlockSet(observed);
                         cosetRepresentative.Act(cosetReprPos.State);
                         Utils.DebugAssert(cosetReprPos.Equals(ePos));
                     }
                     
                     {
                         //
-                        // States in orbit 1-to-1 maps to each *right* coset (Hg). I.e.
-                        // iff. e * cosetRepresentative^(-1) stablizes observedPos.
-                        //
-                        // This deduces that, group actions in same *right* coset, always
-                        // act observedPos to same state.
+                        // States in orbit 1-to-1 maps to each *left* coset (gH). I.e.
+                        // iff. e^(-1) * cosetRepresentative stablizes the BlockSet being
+                        // observed.  This deduces that, group actions in same *left*
+                        // coset, always act the BlockSet being observed to the same state.
                         //
 
-                        var eRCosetRep = e.Mul(cosetRepresentative.Reverse());
-                        Utils.DebugAssert(PositionSet.IsStablized(eRCosetRep, observedPos));
+                        var reCosetRep = e.Reverse().Mul(cosetRepresentative);
+                        Utils.DebugAssert(observed.IsStablizedBy(reCosetRep));
+                        
                     }
 
                     {
                         //
-                        // Iff. e^(-1) * cosetRepresentative stablizes observedPos. This
-                        // is the condition for *left* coset. It is not what we need here,
-                        // and group actions in same *left* coset, may act observedPos to
-                        // different states.
+                        // Iff. e * cosetRepresentative^(-1) stablizes the BlockSet being
+                        // observed. This is the condition for *right* coset. It is not what
+                        // we need here, and group actions in same *right* coset, may act the
+                        // BlockSet being observed to different states.
                         //
 
-                        var reCosetRep = e.Reverse().Mul(cosetRepresentative);
-                        // Utils.DebugAssert(PositionSet.IsStablized(reCosetRep, observedPos));  // In correct
+                        var eRCosetRep = e.Mul(cosetRepresentative.Reverse());
+                        // Utils.DebugAssert(observed.IsStablizedBy(eRCosetRep));  // Doesn't hold
                     }
 
                     return cosetRepresentative;
                 }
             }
 
-            public List<PositionSet> StablizerChain = new List<PositionSet>()
+            private class CubeBlockIndexComparator : IComparer<int>
             {
-                new PositionSet(new List<int>() {
-                    PositionSet.ToPos(PositionSet.PosType.Corner, (int)CubeState.Corners.Pos.FLU),
-                    PositionSet.ToPos(PositionSet.PosType.Corner, (int)CubeState.Corners.Pos.FRU),
-                    PositionSet.ToPos(PositionSet.PosType.Corner, (int)CubeState.Corners.Pos.FRD),
-                    PositionSet.ToPos(PositionSet.PosType.Corner, (int)CubeState.Corners.Pos.FLD),
+                private CubeState State;
 
-                    PositionSet.ToPos(PositionSet.PosType.Corner, (int)CubeState.Corners.Pos.BLU),
-                    PositionSet.ToPos(PositionSet.PosType.Corner, (int)CubeState.Corners.Pos.BRU),
-                    PositionSet.ToPos(PositionSet.PosType.Corner, (int)CubeState.Corners.Pos.BRD),
-                    PositionSet.ToPos(PositionSet.PosType.Corner, (int)CubeState.Corners.Pos.BLD),
-                }),
+                public CubeBlockIndexComparator(CubeState state)
+                {
+                    this.State = state;
+                }
 
-                new PositionSet(new List<int>() {
-                    PositionSet.ToPos(PositionSet.PosType.Edge, (int)CubeState.Edges.Pos.FLD),
-                    PositionSet.ToPos(PositionSet.PosType.Edge, (int)CubeState.Edges.Pos.FLU),
-                    PositionSet.ToPos(PositionSet.PosType.Edge, (int)CubeState.Edges.Pos.FUL),
-                    PositionSet.ToPos(PositionSet.PosType.Edge, (int)CubeState.Edges.Pos.FUR),
-                    PositionSet.ToPos(PositionSet.PosType.Edge, (int)CubeState.Edges.Pos.FRU),
-                    PositionSet.ToPos(PositionSet.PosType.Edge, (int)CubeState.Edges.Pos.FRD),
-                    PositionSet.ToPos(PositionSet.PosType.Edge, (int)CubeState.Edges.Pos.FDR),
-                    PositionSet.ToPos(PositionSet.PosType.Edge, (int)CubeState.Edges.Pos.FDL),
-                }),
+                public int Compare(int x, int y)
+                {
+                    return State.Blocks[x].CompareTo(State.Blocks[y]);
+                }
+            }
 
-                new PositionSet(new List<int>() {
-                    PositionSet.ToPos(PositionSet.PosType.Edge, (int)CubeState.Edges.Pos.BLD),
-                    PositionSet.ToPos(PositionSet.PosType.Edge, (int)CubeState.Edges.Pos.BLU),
-                    PositionSet.ToPos(PositionSet.PosType.Edge, (int)CubeState.Edges.Pos.BUL),
-                    PositionSet.ToPos(PositionSet.PosType.Edge, (int)CubeState.Edges.Pos.BUR),
-                    PositionSet.ToPos(PositionSet.PosType.Edge, (int)CubeState.Edges.Pos.BRU),
-                    PositionSet.ToPos(PositionSet.PosType.Edge, (int)CubeState.Edges.Pos.BRD),
-                    PositionSet.ToPos(PositionSet.PosType.Edge, (int)CubeState.Edges.Pos.BDR),
-                    PositionSet.ToPos(PositionSet.PosType.Edge, (int)CubeState.Edges.Pos.BDL),
-                }),
-
-                new PositionSet(new List<int>() {
-                    PositionSet.ToPos(PositionSet.PosType.Edge, (int)CubeState.Edges.Pos.LDF),
-                    PositionSet.ToPos(PositionSet.PosType.Edge, (int)CubeState.Edges.Pos.LDB),
-                    PositionSet.ToPos(PositionSet.PosType.Edge, (int)CubeState.Edges.Pos.LUF),
-                    PositionSet.ToPos(PositionSet.PosType.Edge, (int)CubeState.Edges.Pos.LUB),
-                    PositionSet.ToPos(PositionSet.PosType.Edge, (int)CubeState.Edges.Pos.RUF),
-                    PositionSet.ToPos(PositionSet.PosType.Edge, (int)CubeState.Edges.Pos.RUB),
-                    PositionSet.ToPos(PositionSet.PosType.Edge, (int)CubeState.Edges.Pos.RDF),
-                    PositionSet.ToPos(PositionSet.PosType.Edge, (int)CubeState.Edges.Pos.RDB),
-                }),
-
-                new PositionSet(new List<int>() {
-                    PositionSet.ToPos(PositionSet.PosType.Face, (int)CubeState.Faces.Pos.FLU),
-                    PositionSet.ToPos(PositionSet.PosType.Face, (int)CubeState.Faces.Pos.FRU),
-                    PositionSet.ToPos(PositionSet.PosType.Face, (int)CubeState.Faces.Pos.FRD),
-                    PositionSet.ToPos(PositionSet.PosType.Face, (int)CubeState.Faces.Pos.FLD),
-                }),
-
-                new PositionSet(new List<int>() {
-                    PositionSet.ToPos(PositionSet.PosType.Face, (int)CubeState.Faces.Pos.BLU),
-                    PositionSet.ToPos(PositionSet.PosType.Face, (int)CubeState.Faces.Pos.BRU),
-                    PositionSet.ToPos(PositionSet.PosType.Face, (int)CubeState.Faces.Pos.BRD),
-                    PositionSet.ToPos(PositionSet.PosType.Face, (int)CubeState.Faces.Pos.BLD),
-                }),
-
-                new PositionSet(new List<int>() {
-                    PositionSet.ToPos(PositionSet.PosType.Face, (int)CubeState.Faces.Pos.LBU),
-                    PositionSet.ToPos(PositionSet.PosType.Face, (int)CubeState.Faces.Pos.LFU),
-                    PositionSet.ToPos(PositionSet.PosType.Face, (int)CubeState.Faces.Pos.LFD),
-                    PositionSet.ToPos(PositionSet.PosType.Face, (int)CubeState.Faces.Pos.LBD),
-                }),
-
-                new PositionSet(new List<int>() {
-                    PositionSet.ToPos(PositionSet.PosType.Face, (int)CubeState.Faces.Pos.UBL),
-                    PositionSet.ToPos(PositionSet.PosType.Face, (int)CubeState.Faces.Pos.UBR),
-                    PositionSet.ToPos(PositionSet.PosType.Face, (int)CubeState.Faces.Pos.UFR),
-                    PositionSet.ToPos(PositionSet.PosType.Face, (int)CubeState.Faces.Pos.UFL),
-                }),
-
-                new PositionSet(new List<int>() {
-                    PositionSet.ToPos(PositionSet.PosType.Face, (int)CubeState.Faces.Pos.RBU),
-                    PositionSet.ToPos(PositionSet.PosType.Face, (int)CubeState.Faces.Pos.RFU),
-                    PositionSet.ToPos(PositionSet.PosType.Face, (int)CubeState.Faces.Pos.RFD),
-                    PositionSet.ToPos(PositionSet.PosType.Face, (int)CubeState.Faces.Pos.RBD),
-                }),
-
-                new PositionSet(new List<int>() {
-                    PositionSet.ToPos(PositionSet.PosType.Face, (int)CubeState.Faces.Pos.DBL),
-                    PositionSet.ToPos(PositionSet.PosType.Face, (int)CubeState.Faces.Pos.DBR),
-                    PositionSet.ToPos(PositionSet.PosType.Face, (int)CubeState.Faces.Pos.DFR),
-                    PositionSet.ToPos(PositionSet.PosType.Face, (int)CubeState.Faces.Pos.DFL),
-                }),
-            };
+            public List<BlockSet> StablizerChain;
 
             public List<GStep> SolvingMap = new List<GStep>();
 
+            public CubeSolution()
+            {
+                StablizerChain = DefaultStablizerChain();
+            }
+
+            public List<BlockSet> DefaultStablizerChain()
+            {
+                var ret = new List<BlockSet>();
+
+                var state = new CubeState();
+                var solvingOrder = Enumerable.Range(0, state.Blocks.Length).OrderBy(i => i, new CubeBlockIndexComparator(state)).ToList();
+
+                foreach (int order in solvingOrder)
+                {
+                    ret.Add(new BlockSet(state, new List<int>() { order }));
+                }
+
+                return ret;
+            }
+
             public void CalculateSolvingMap()
             {
-                GStep g0 = new GStep(new PositionSet(), new List<CubeAction>() {
+                //
+                // Print the StablizerChain
+                //
+
+                Console.WriteLine("StablizerChain:");
+                foreach (var bs in StablizerChain)
+                {
+                    Console.WriteLine($"  {bs}");
+                }
+
+                //
+                // Setup init Cube operations
+                //
+
+                CubeState state = new CubeState();
+                GStep g0 = new GStep(new BlockSet(state), new List<CubeAction>() {
                      new CubeAction(new List<CubeOp.Type>() { CubeOp.Type.Op1F }),
                      new CubeAction(new List<CubeOp.Type>() { CubeOp.Type.Op2F }),
                      new CubeAction(new List<CubeOp.Type>() { CubeOp.Type.Op3F }),
@@ -330,6 +280,10 @@ namespace GroupTheory_RubiksCube
                 });
                 SolvingMap.Add(g0);
 
+                //
+                // Solving entire cube to plot the map
+                //
+
                 var gCurrent = g0;
                 for (int i = 0; i < StablizerChain.Count; i++)
                 {
@@ -339,7 +293,7 @@ namespace GroupTheory_RubiksCube
                 }
             }
 
-            public List<CubeAction> SolveCube(CubeState cubeState)
+            public List<CubeAction> SolveCube(CubeState puzzleState)
             {
                 if (SolvingMap.Count <= 0)
                 {
@@ -349,44 +303,35 @@ namespace GroupTheory_RubiksCube
                 var ret = new List<CubeAction>();
                 foreach (var g in SolvingMap)
                 {
-                    var cubePos = new PositionSet(g.NextToStablizePos);
-                    cubePos.State = cubeState;
-
-                    if (!g.OrbitToCoset.ContainsKey(cubePos))
+                    var observed = new BlockSet(puzzleState, g.ToStablize.Indexes);
+                    if (!g.OrbitToCoset.ContainsKey(observed))
                     {
                         throw new ArgumentException();
                     }
 
-                    var cosetResp = g.OrbitToCoset[cubePos];
-                    var rCosetResp = cosetResp.Reverse();
+                    var cosetRepresentative = g.OrbitToCoset[observed];
+                    var rCosetRepr = cosetRepresentative.Reverse();
+                    
+                    rCosetRepr.Act(observed.State);
+                    ret.Add(rCosetRepr);
 
-                    rCosetResp.Act(cubeState);
-                    ret.Add(rCosetResp);
-
-                    Utils.DebugAssert(g.OrbitToCoset.ContainsKey(cubePos));
-                    Utils.DebugAssert(g.OrbitToCoset[cubePos].Equals(new CubeAction()));
+                    Utils.DebugAssert(g.OrbitToCoset.ContainsKey(observed));
+                    Utils.DebugAssert(g.OrbitToCoset[observed].Equals(new CubeAction()));
                 }
 
+                {
+                    var trialState = new CubeState(puzzleState);
+                    foreach (var action in ret)
+                    {
+                        action.Act(trialState);
+                    }
+                    Utils.DebugAssert(trialState.Equals(new CubeState()));
+                }
                 return ret;
             }
         }
     }
 }
 
-// TODO We are probably getting it all wrong. By steps at https://www.jaapsch.net/puzzles/schreier.htm,
-// we need to guarantee that, no matter what is the current position state, by *cosetRepresentative^(-1) we
-// will always go back to the standard position state. That's how we reverse back the map.
-//
-// However, in current CubeState model, we cannot guarantee this, since we are tracking each position has
-// which block. In the contrast, we should instead track each block is at which position (and at which facing
-// direction, so we can deduce cube colors). In later way, *cosetRepresentative^(-1) always bring the block
-// back.
-//
-// And to track a block's facing direction, we can construct a 3-dimensional axis system, and cube operations
-// are always turning 90 degrees around certain axis.
-//
-// As just math checked, in the later way to track, we should use *left* coset, rather than now the *right*
-// coset. In same left coset, each group action always moves the observed set of blocks to same end position.
-//
-// And, we should try use stablizer chain of solving one block each time. In this way we should have less number
-// of cosets (and maybe generators) to walk through.
+// TODO The current problem is, generators grow exponentially along with the sablizer chain.
+//      We need to find a better way for calcultion. WIP.

@@ -82,12 +82,10 @@ namespace GroupTheory_RubiksCube
                     Op(cubeState, op);
                 }
 
-                // Random skip to make faster
-                if (Utils.GlobalRandom.Next(Utils.SkipVerifyBase) <= (int)(Utils.SkipVerifyBase * (1 - Utils.SkipVerifyRatio)))
+                // Random skip to make verification faster
+                if (Utils.ShouldVerify())
                 {
-                    Utils.DebugAssert(Utils.IsIntPermutation(cubeState.corners.State, CubeState.Corners.Count));
-                    Utils.DebugAssert(Utils.IsIntPermutation(cubeState.edges.State, CubeState.Edges.Count));
-                    Utils.DebugAssert(Utils.IsIntPermutation(cubeState.faces.State, CubeState.Faces.Count));
+                    cubeState.VerifyInvariants();
                 }
             }
 

@@ -1,4 +1,5 @@
 ﻿using System;
+using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Text;
@@ -9,17 +10,35 @@ namespace GroupTheory_RubiksCube
     {
         public static readonly Random GlobalRandom = new Random();
         public const int SkipVerifyBase = 1000;
-        public const double SkipVerifyRatio = 0.99;
+        public const double SkipVerifyRatio = 0.9;
 
-        public static int GetHashCode(int[] array)
+        public static int GetHashCode<T>(IEnumerable<T> array)
         {
-            int ret = array.Length;
-            for (int i = 0; i < array.Length; i++)
+            int ret = array.Count();
+            foreach(var e in array)
             {
-                ret = unchecked(ret * 23 + array[i]);
+                ret = unchecked(ret * 23 + e.GetHashCode());
             }
 
             return ret;
+        }
+
+        public static bool Array2DEqual<T>(T[,] a, T[,]b)
+        {
+            if (a.Rank != b.Rank)
+            {
+                return false;
+            }
+            
+            for (int i = 0; i < a.Rank; i++)
+            {
+                if (a.GetLength(i) != b.GetLength(i))
+                {
+                    return false;
+                }
+            }
+
+            return a.Cast<T>().SequenceEqual(b.Cast<T>());
         }
 
         /// <summary>
@@ -73,6 +92,30 @@ namespace GroupTheory_RubiksCube
             if (!assert)
             {
                 throw new Exception($"Assert Failure: msg = {msg}");
+            }
+        }
+
+        public static bool ShouldVerify()
+        {
+            return GlobalRandom.Next(SkipVerifyBase)
+                    <= (int)(SkipVerifyBase * (1 - SkipVerifyRatio));
+        }
+
+        public class ListEqualityComparator<T> : EqualityComparer<List<T>>
+        {
+            public override bool Equals(List<T> x, List<T> y)
+            {
+                if (null == x || null == y)
+                {
+                    throw new ArgumentException();
+                }
+
+                return x.SequenceEqual(y);
+            }
+
+            public override int GetHashCode(List<T> obj)
+            {
+                return Utils.GetHashCode(obj);
             }
         }
 
