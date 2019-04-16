@@ -18,7 +18,7 @@ namespace GroupTheory_RubiksCube
             fileWriter.AutoFlush = true;
 
             var consoleMirrorFile = new Utils.MirroredWriter(fileWriter, Console.Out);
-            Console.SetOut(consoleMirrorFile);
+            // Console.SetOut(consoleMirrorFile);  // Too slow, skip file writes
 
             //
             // Verifying basics

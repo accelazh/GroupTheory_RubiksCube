@@ -418,15 +418,26 @@ namespace GroupTheory_RubiksCube
                 { Color.White, Color.Yellow },
             };
 
+            private static CubeState StandardProto;
+
             static CubeState()
             {
                 Utils.DebugAssert(StandardCubeColor.GetLength(0) == Enum.GetNames(typeof(Axis)).Length);
                 Utils.DebugAssert(StandardCubeColor.GetLength(1) == Enum.GetNames(typeof(Direction)).Length);
+
+                StandardProto = new CubeState(0);
+                StandardProto.InitBlocksInStandardPosition();
             }
 
-            public CubeState()
+            // Specific private constructor to init StandardProto
+            private CubeState(int _)
             {
-                InitBlocksInStandardPosition();
+                // Do nothing
+            }
+
+            public CubeState() : this(StandardProto)
+            {
+                // Do nothing
             }
 
             public CubeState(CubeState other)
@@ -697,24 +708,10 @@ namespace GroupTheory_RubiksCube
             // If position[X] is null, it means matching anything
             public IEnumerable<Block> BlocksMatchingPosition(int?[] position)
             {
-                foreach (var block in Blocks)
-                {
-                    bool matched = true;
-                    foreach (Axis axis in Enum.GetValues(typeof(Axis)))
-                    {
-                        if (position[(int)axis].HasValue
-                            && position[(int)axis].Value != block.Position[(int)axis])
-                        {
-                            matched = false;
-                            break;
-                        }
-                    }
-
-                    if (matched)
-                    {
-                        yield return block;
-                    }
-                }
+                return Blocks.Where(b =>
+                    (!position[(int)Axis.X].HasValue || position[(int)Axis.X] == b.Position[(int)Axis.X])
+                    && (!position[(int)Axis.Y].HasValue || position[(int)Axis.Y] == b.Position[(int)Axis.Y])
+                    && (!position[(int)Axis.Z].HasValue || position[(int)Axis.Y] == b.Position[(int)Axis.Z]));
             }
 
             public IEnumerable<Block> BlocksAtPositions(IEnumerable<int[]> positions)

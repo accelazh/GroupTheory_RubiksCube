@@ -116,7 +116,10 @@ namespace GroupTheory_RubiksCube
                 } while (found);
 
                 var newAction = new CubeAction(newOps);
-                Utils.DebugAssert(newAction.Equals(this));
+                if (Utils.ShouldVerify())
+                {
+                    Utils.DebugAssert(newAction.Equals(this));
+                }
                 return newAction;
             }
 

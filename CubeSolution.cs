@@ -139,73 +139,35 @@ namespace GroupTheory_RubiksCube
                     }
 
                     var cosetRepresentative = OrbitToCoset[eState];
+                    if (Utils.ShouldVerify())
                     {
-                        var cosetReprState = new BlockSet(ToStablize);
-                        cosetRepresentative.Act(cosetReprState.State);
-                        Utils.DebugAssert(cosetReprState.Equals(eState));
-                    }
-
-                    {
-                        //
-                        // States in orbit 1-to-1 maps to each *left* coset (gH). I.e.
-                        // iff. e^(-1) * cosetRepresentative stablizes the BlockSet being
-                        // observed.  This deduces that, group actions in same *left*
-                        // coset, always act the BlockSet being observed to the same state.
-                        //
-
-                        var reCosetRep = e.Reverse().Mul(cosetRepresentative);
-                        Utils.DebugAssert(Stablized.IsStablizedBy(reCosetRep));
-
-                    }
-
-                    {
-                        //
-                        // Iff. e * cosetRepresentative^(-1) stablizes the BlockSet being
-                        // observed. This is the condition for *right* coset. It is not what
-                        // we need here, and group actions in same *right* coset, may act the
-                        // BlockSet being observed to different states.
-                        //
-
-                        var eRCosetRep = e.Mul(cosetRepresentative.Reverse());
-                        // Utils.DebugAssert(observed.IsStablizedBy(eRCosetRep));  // Doesn't hold
-                    }
-
-                    return cosetRepresentative;
-                }
-
-                private HashSet<BlockSet> ExploreNewCosetsByCosetLookup()
-                {
-                    var newStates = new HashSet<BlockSet>();
-                    var needWalkCosets = new HashSet<CubeAction>(OrbitToCoset.Values);
-
-                    foreach (var s in Generators)
-                    {
-                        foreach (var leftCoset in needWalkCosets)
                         {
-                            var sr = s.Mul(leftCoset);
-                            var cosetReprSr = DetermineBelongingCoset(sr);
+                            var cosetReprState = new BlockSet(ToStablize);
+                            cosetRepresentative.Act(cosetReprState.State);
+                            Utils.DebugAssert(cosetReprState.Equals(eState));
+                        }
 
-                            if (null == cosetReprSr)
-                            {
-                                var srState = new BlockSet(ToStablize);
-                                sr.Act(srState.State);
+                        {
+                            // States in orbit 1-to-1 maps to each *left* coset (gH). I.e.
+                            // iff. e^(-1) * cosetRepresentative stablizes the BlockSet being
+                            // observed.  This deduces that, group actions in same *left*
+                            // coset, always act the BlockSet being observed to the same state.
+                            var reCosetRep = e.Reverse().Mul(cosetRepresentative);
+                            Utils.DebugAssert(Stablized.IsStablizedBy(reCosetRep));
 
-                                Utils.DebugAssert(!OrbitToCoset.ContainsKey(srState));
-                                Utils.DebugAssert(Stablized.IsStablizedBy(sr));
-                                OrbitToCoset.Add(srState, sr);
+                        }
 
-                                newStates.Add(srState);
-                                Console.WriteLine(
-                                    $"Stablized[{Stablized.Indexes.Count}] " +
-                                    $"ExploreNewCosetsByCosetLookup: " +
-                                    $"foundCount/total={newStates.Count}/{Generators.Count}*{needWalkCosets.Count()} " +
-                                    $"newState=[{srState}] sr=[{sr}] " +
-                                    $"leftCoset=[{leftCoset}] generator=[{s}]");
-                            }
+                        {
+                            // Iff. e * cosetRepresentative^(-1) stablizes the BlockSet being
+                            // observed. This is the condition for *right* coset. It is not what
+                            // we need here, and group actions in same *right* coset, may act the
+                            // BlockSet being observed to different states.
+                            var eRCosetRep = e.Mul(cosetRepresentative.Reverse());
+                            // Utils.DebugAssert(observed.IsStablizedBy(eRCosetRep));  // Doesn't hold
                         }
                     }
 
-                    return newStates;
+                    return cosetRepresentative;
                 }
 
                 private HashSet<BlockSet> ExploreOrbitToCosetIncrementally(CubeAction newGenerator)
@@ -244,19 +206,6 @@ namespace GroupTheory_RubiksCube
                             fullyWalkedStates = new HashSet<BlockSet>(OrbitToCoset.Keys);
                         }
 
-                        {
-                            var localNewStates = ExploreNewCosetsByCosetLookup();
-
-                            // In theory, we should never find new cosets here. Because each known
-                            // coset representative is generated by permutations of known generators.
-                            // And we have already explore that, permutations of known generators
-                            // should never give us any new coset.
-                            Utils.DebugAssert(localNewStates.Count == 0);
-
-                            foundCount += localNewStates.Count;
-                            newStates.UnionWith(localNewStates);
-                        }
-
                         if (foundCount <= 0)
                         {
                             break;
@@ -272,12 +221,18 @@ namespace GroupTheory_RubiksCube
                     // To match naming in Schreier subgroup lemma;
                     var s = generator;
                     var r = leftCoset;
-
                     var sr = s.Mul(r);
-                    var cosetReprSr = DetermineBelongingCoset(sr);
-                    var rCosetReprSr = cosetReprSr.Reverse();
 
+                    // In theory, sr's coset should always be already known. Because each known
+                    // coset representative is generated by permutations of known generators.
+                    // And we have already explore that. So permutations of known generators,
+                    // i.e. sr, should never give us any new coset.
+                    var cosetReprSr = DetermineBelongingCoset(sr);
+                    Utils.DebugAssert(cosetReprSr != null);
+
+                    var rCosetReprSr = cosetReprSr.Reverse();
                     var subgroupGenerator = rCosetReprSr.Mul(sr);
+
                     return subgroupGenerator;
                 }
 
@@ -303,14 +258,9 @@ namespace GroupTheory_RubiksCube
                             if (!subgroupGenerator.Equals(new CubeAction()) && !newSubgroupGenerators.Contains(subgroupGenerator))
                             {
                                 Utils.DebugAssert(ToStablize.IsStablizedBy(subgroupGenerator));
-
                                 newSubgroupGenerators.Add(subgroupGenerator);
-                                /* We don't know the whether generator is redundant, so don't print it.
-                                Console.WriteLine(
-                                    $"Stablized[{Stablized.Indexes.Count}] " +
-                                    $"ObtainGeneratorsOfStablizerSubgroupIncrementally: " +
-                                    $"foundCount/total={newSubgroupGenerators.Count}/{Generators.Count()}*{OrbitToCoset.Count} " +
-                                    $"subgroupGenerator=[{subgroupGenerator}]"); */
+
+                                /* No need to print because we don't know the whether generator is redundant here. */
                             }
                         }
                     }
@@ -350,11 +300,6 @@ namespace GroupTheory_RubiksCube
                     if (foundStateCount <= 0)
                     {
                         Generators.Remove(newGenerator);
-
-                        Console.WriteLine(
-                            $"Stablized[{Stablized.Indexes.Count}] " +
-                            $"AddGeneratorIncrementally: Rejected useless new generator: " +
-                            $"newGenerator=[{newGenerator}]");
                     }
                     else
                     {

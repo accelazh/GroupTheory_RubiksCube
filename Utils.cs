@@ -10,7 +10,7 @@ namespace GroupTheory_RubiksCube
     {
         public static readonly Random GlobalRandom = new Random();
         public const int SkipVerifyBase = 1000;
-        public const double SkipVerifyRatio = 0.9;
+        public const double SkipVerifyRatio = 0.99;
 
         public static int GetHashCode<T>(IEnumerable<T> array)
         {
@@ -139,13 +139,19 @@ namespace GroupTheory_RubiksCube
             public override void Flush()
             {
                 Writer.Flush();
-                Mirrored.Flush();
+                if (Mirrored != null)
+                {
+                    Mirrored.Flush();
+                }
             }
 
             public override void Write(char value)
             {
                 Writer.Write(value);
-                Mirrored.Write(value);
+                if (Mirrored != null)
+                {
+                    Mirrored.Write(value);
+                }
             }
         }
     }
