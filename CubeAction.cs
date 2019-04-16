@@ -187,7 +187,7 @@ namespace GroupTheory_RubiksCube
                     {
                         outStr.Append(
                             $"{CubeOp.ToString(lastOp.Value)}" +
-                            (duplicateCount > 1 ? $"{duplicateCount}" : " ") +
+                            (duplicateCount > 1 ? $"{duplicateCount}" : "") +
                             " ");
 
                         duplicateCount = 1;
