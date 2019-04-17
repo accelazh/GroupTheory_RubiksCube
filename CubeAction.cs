@@ -71,49 +71,28 @@ namespace GroupTheory_RubiksCube
                 return a.Mul(b);
             }
 
+            private static void SimplifyNoops(List<CubeOp.Type> newOps)
+            {
+                while (true)
+                {
+                    var duplicateRet = Utils.PackDuplicates(newOps)
+                                        .Where(t => t.Item2 >= CubeState.TurnAround)
+                                        .FirstOrDefault();
+                    if (null == duplicateRet)
+                    {
+                        break;
+                    }
+
+                    Utils.DebugAssert(duplicateRet.Item2 >= CubeState.TurnAround);
+                    newOps.RemoveRange(duplicateRet.Item1, CubeState.TurnAround);
+                }
+            }
+
             public CubeAction Simplify()
             {
-                const int DUPLICATE_OP_LENGTH = 4;
-
                 var newOps = new List<CubeOp.Type>(Ops);
-                bool found;
-                do
-                {
-                    found = false;
 
-                    int duplicateCount = 0;
-                    int lastValue = -1;
-                    for (int i = 0; i < newOps.Count; i++)
-                    {
-                        int curValue = (int)newOps[i];
-                        if (curValue == lastValue)
-                        {
-                            if (0 == duplicateCount)
-                            {
-                                // If first time found duplicate, it means
-                                // there are two duplicates now.
-                                duplicateCount = 2;
-                            }
-                            else
-                            {
-                                duplicateCount++;
-                            }
-                        }
-                        else
-                        {
-                            duplicateCount = 0;
-                        }
-
-                        if (DUPLICATE_OP_LENGTH == duplicateCount)
-                        {
-                            found = true;
-                            newOps.RemoveRange(i - DUPLICATE_OP_LENGTH + 1, DUPLICATE_OP_LENGTH);
-                            break;
-                        }
-
-                        lastValue = curValue;
-                    }
-                } while (found);
+                SimplifyNoops(newOps);
 
                 var newAction = new CubeAction(newOps);
                 if (Utils.ShouldVerify())

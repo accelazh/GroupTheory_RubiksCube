@@ -95,6 +95,43 @@ namespace GroupTheory_RubiksCube
             }
         }
 
+        // Return Tuple<start_index, duplicate_length>
+        public static IEnumerable<Tuple<int, int, T>> PackDuplicates<T>(IEnumerable<T> list)
+        {
+            int idx = 0;
+            T lastOp = default(T);
+            int duplicateCount = 0;
+
+            foreach (var op in list)
+            {
+                if (idx > 0)
+                {
+                    if (op.Equals(lastOp))
+                    {
+                        duplicateCount++;
+                    }
+                    else
+                    {
+                        DebugAssert(idx >= duplicateCount);
+                        yield return new Tuple<int, int, T>(
+                            idx - duplicateCount, duplicateCount, lastOp);
+
+                        duplicateCount = 1;
+                    }
+                }
+                else
+                {
+                    duplicateCount = 1;
+                }
+
+                lastOp = op;
+                idx++;
+            }
+
+            DebugAssert(idx >= duplicateCount);
+            yield return new Tuple<int, int, T>(idx - duplicateCount, duplicateCount, lastOp);
+        }
+
         public static bool ShouldVerify()
         {
             return GlobalRandom.Next(SkipVerifyBase)

@@ -25,6 +25,40 @@ namespace GroupTheory_RubiksCube
                 Op3L,
                 Op4L,
             }
+            private enum Aux
+            {
+                // 2-duplicated operations, redundant but save computation
+                Op1F2 = 0,
+                Op2F2,
+                Op3F2,
+                Op4F2,
+
+                Op1U2,
+                Op2U2,
+                Op3U2,
+                Op4U2,
+
+                Op1L2,
+                Op2L2,
+                Op3L2,
+                Op4L2,
+
+                // Reverse operations, redundant but save computation
+                Op1F3,
+                Op2F3,
+                Op3F3,
+                Op4F3,
+
+                Op1U3,
+                Op2U3,
+                Op3U3,
+                Op4U3,
+
+                Op1L3,
+                Op2L3,
+                Op3L3,
+                Op4L3,
+            }
 
             public static void Op(CubeState cubeState, Type opType)
             {
@@ -74,12 +108,136 @@ namespace GroupTheory_RubiksCube
                 }
             }
 
+            private static Aux MapOpToAux(Type op, int duplicates)
+            {
+                if (2 == duplicates)
+                {
+                    return (Aux)((int)op);
+                }
+                else if (3 == duplicates)
+                {
+                    return (Aux)((int)op + (int)Aux.Op1F3);
+                }
+                else
+                {
+                    throw new ArgumentException();
+                }
+            }
+
+            private static void AuxOp(CubeState cubeState, Aux opType)
+            {
+                switch (opType)
+                {
+                    // 2-duplicated operations
+
+                    case Aux.Op1F2:
+                        cubeState.Op_1F2();
+                        break;
+                    case Aux.Op2F2:
+                        cubeState.Op_2F2();
+                        break;
+                    case Aux.Op3F2:
+                        cubeState.Op_3F2();
+                        break;
+                    case Aux.Op4F2:
+                        cubeState.Op_4F2();
+                        break;
+
+                    case Aux.Op1U2:
+                        cubeState.Op_1U2();
+                        break;
+                    case Aux.Op2U2:
+                        cubeState.Op_2U2();
+                        break;
+                    case Aux.Op3U2:
+                        cubeState.Op_3U2();
+                        break;
+                    case Aux.Op4U2:
+                        cubeState.Op_4U2();
+                        break;
+
+                    case Aux.Op1L2:
+                        cubeState.Op_1L2();
+                        break;
+                    case Aux.Op2L2:
+                        cubeState.Op_2L2();
+                        break;
+                    case Aux.Op3L2:
+                        cubeState.Op_3L2();
+                        break;
+                    case Aux.Op4L2:
+                        cubeState.Op_4L2();
+                        break;
+
+                    // Reverse operations
+
+                    case Aux.Op1F3:
+                        cubeState.Op_1F3();
+                        break;
+                    case Aux.Op2F3:
+                        cubeState.Op_2F3();
+                        break;
+                    case Aux.Op3F3:
+                        cubeState.Op_3F3();
+                        break;
+                    case Aux.Op4F3:
+                        cubeState.Op_4F3();
+                        break;
+
+                    case Aux.Op1U3:
+                        cubeState.Op_1U3();
+                        break;
+                    case Aux.Op2U3:
+                        cubeState.Op_2U3();
+                        break;
+                    case Aux.Op3U3:
+                        cubeState.Op_3U3();
+                        break;
+                    case Aux.Op4U3:
+                        cubeState.Op_4U3();
+                        break;
+
+                    case Aux.Op1L3:
+                        cubeState.Op_1L3();
+                        break;
+                    case Aux.Op2L3:
+                        cubeState.Op_2L3();
+                        break;
+                    case Aux.Op3L3:
+                        cubeState.Op_3L3();
+                        break;
+                    case Aux.Op4L3:
+                        cubeState.Op_4L3();
+                        break;
+
+                    default:
+                        throw new ArgumentException();
+                }
+            }
+
+            // Op1 * Op2 * Op3 * .. * OpN * CubeState. So we apply Ops in reverse order.
             public static void Op(CubeState cubeState, IEnumerable<Type> opTypes)
             {
-                // Op1 * Op2 * Op3 * .. * OpN * CubeState. So we apply Ops in reverse order.
-                foreach (var op in Enumerable.Reverse(opTypes))
+                foreach (var duplicateRet in Utils.PackDuplicates(Enumerable.Reverse(opTypes)))
                 {
-                    Op(cubeState, op);
+                    var op = duplicateRet.Item3;
+                    var duplicates = duplicateRet.Item2 % CubeState.TurnAround;
+
+                    if (0 == duplicates)
+                    {
+                        // Do nothing
+                    }
+                    else if (1 == duplicates)
+                    {
+                        Op(cubeState, op);
+                    }
+                    else
+                    {
+                        // For duplicated operations, we map them to a direct cube
+                        // operation rather than repeat them
+                        var auxOp = MapOpToAux(op, duplicates);
+                        AuxOp(cubeState, auxOp);
+                    }
                 }
 
                 // Random skip to make verification faster

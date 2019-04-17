@@ -46,7 +46,23 @@ namespace GroupTheory_RubiksCube
                         }
                     }
                 }
+
+                for (int caseIdx = 0; caseIdx < 100; caseIdx++)
+                {
+                    CubeState.Block block = CubeState.Block.Random();
+                    foreach (CubeState.Axis axis in Enum.GetValues(typeof(CubeState.Axis)))
+                    {
+                        CubeState.Block newBlock = new CubeState.Block(block);
+                        for (int i = 0; i < CubeState.TurnAround / 2; i++)
+                        {
+                            newBlock.Reflect(axis);
+                        }
+
+                        Utils.DebugAssert(newBlock.Equals(block));
+                    }
+                }
             }
+
             public static void VerifyCubeTurnAround()
             {
                 for (int caseIdx = 0; caseIdx < 100; caseIdx++)
@@ -58,6 +74,40 @@ namespace GroupTheory_RubiksCube
                         CubeState newCubeState = new CubeState(cubeState);
 
                         for (int i = 0; i < CubeState.TurnAround; i++)
+                        {
+                            action.Act(newCubeState);
+                        }
+
+                        Utils.DebugAssert(newCubeState.Equals(cubeState));
+                    }
+                }
+
+                for (int caseIdx = 0; caseIdx < 100; caseIdx++)
+                {
+                    CubeState cubeState = CubeAction.RandomCube(Utils.GlobalRandom.Next(1, 30));
+                    foreach (CubeOp.Type op in Enum.GetValues(typeof(CubeOp.Type)))
+                    {
+                        var action = new CubeAction(new int[] { (int)op, (int)op, (int)op });
+                        CubeState newCubeState = new CubeState(cubeState);
+
+                        for (int i = 0; i < CubeState.TurnAround; i++)
+                        {
+                            action.Act(newCubeState);
+                        }
+
+                        Utils.DebugAssert(newCubeState.Equals(cubeState));
+                    }
+                }
+
+                for (int caseIdx = 0; caseIdx < 100; caseIdx++)
+                {
+                    CubeState cubeState = CubeAction.RandomCube(Utils.GlobalRandom.Next(1, 30));
+                    foreach (CubeOp.Type op in Enum.GetValues(typeof(CubeOp.Type)))
+                    {
+                        var action = new CubeAction(new int[] { (int)op, (int)op });
+                        CubeState newCubeState = new CubeState(cubeState);
+
+                        for (int i = 0; i < CubeState.TurnAround / 2; i++)
                         {
                             action.Act(newCubeState);
                         }

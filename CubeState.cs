@@ -245,6 +245,69 @@ namespace GroupTheory_RubiksCube
                     Color[hAxisIdx, (int)Direction.Negative] = oldVAxisPositive;
                 }
 
+                public void Reflect(Axis axis)
+                {
+                    ReflectPosition(axis);
+                    ReflectColor(axis);
+                }
+
+                private void ReflectPosition(Axis axis)
+                {
+                    switch (axis)
+                    {
+                        case Axis.X:
+                            ReflectPosition2D((int)Axis.Y, (int)Axis.Z);
+                            break;
+                        case Axis.Y:
+                            ReflectPosition2D((int)Axis.Z, (int)Axis.X);
+                            break;
+                        case Axis.Z:
+                            ReflectPosition2D((int)Axis.X, (int)Axis.Y);
+                            break;
+
+                        default:
+                            throw new ArgumentException();
+                    }
+                }
+
+                public void ReflectPosition2D(int hAxisIdx, int vAxisIdx)
+                {
+                    Position[hAxisIdx] = -Position[hAxisIdx];
+                    Position[vAxisIdx] = -Position[vAxisIdx];
+                }
+
+                private void ReflectColor(Axis axis)
+                {
+                    switch (axis)
+                    {
+                        case Axis.X:
+                            ReflectColor2D((int)Axis.Y, (int)Axis.Z);
+                            break;
+                        case Axis.Y:
+                            ReflectColor2D((int)Axis.Z, (int)Axis.X);
+                            break;
+                        case Axis.Z:
+                            ReflectColor2D((int)Axis.X, (int)Axis.Y);
+                            break;
+
+                        default:
+                            throw new ArgumentException();
+                    }
+                }
+
+                private void ReflectColor2D(int hAxisIdx, int vAxisIdx)
+                {
+                    Color tmp;
+
+                    tmp = Color[hAxisIdx, (int)Direction.Positive];
+                    Color[hAxisIdx, (int)Direction.Positive] = Color[hAxisIdx, (int)Direction.Negative];
+                    Color[hAxisIdx, (int)Direction.Negative] = tmp;
+
+                    tmp = Color[vAxisIdx, (int)Direction.Positive];
+                    Color[vAxisIdx, (int)Direction.Positive] = Color[vAxisIdx, (int)Direction.Negative];
+                    Color[vAxisIdx, (int)Direction.Negative] = tmp;
+                }
+
                 public static int GetPositionBoundaryCount(int[] position)
                 {
                     int count = 0;
@@ -831,6 +894,222 @@ namespace GroupTheory_RubiksCube
                 foreach (var block in BlocksMatchingPosition(position))
                 {
                     block.Rotate(Axis.Y, Direction.Negative);
+                }
+            }
+
+            public void Op_1F3()
+            {
+                int?[] position = new int?[] { Level / 2, null, null };
+                foreach (var block in BlocksMatchingPosition(position))
+                {
+                    block.Rotate(Axis.X, Direction.Negative);
+                }
+            }
+
+            public void Op_2F3()
+            {
+                int?[] position = new int?[] { Level / 2 - 1, null, null };
+                foreach (var block in BlocksMatchingPosition(position))
+                {
+                    block.Rotate(Axis.X, Direction.Negative);
+                }
+            }
+
+            public void Op_3F3()
+            {
+                int?[] position = new int?[] { -Level / 2 + 1, null, null };
+                foreach (var block in BlocksMatchingPosition(position))
+                {
+                    block.Rotate(Axis.X, Direction.Negative);
+                }
+            }
+
+            public void Op_4F3()
+            {
+                int?[] position = new int?[] { -Level / 2, null, null };
+                foreach (var block in BlocksMatchingPosition(position))
+                {
+                    block.Rotate(Axis.X, Direction.Negative);
+                }
+            }
+
+            public void Op_1U3()
+            {
+                int?[] position = new int?[] { null, null, Level / 2 };
+                foreach (var block in BlocksMatchingPosition(position))
+                {
+                    block.Rotate(Axis.Z, Direction.Negative);
+                }
+            }
+
+            public void Op_2U3()
+            {
+                int?[] position = new int?[] { null, null, Level / 2 - 1 };
+                foreach (var block in BlocksMatchingPosition(position))
+                {
+                    block.Rotate(Axis.Z, Direction.Negative);
+                }
+            }
+
+            public void Op_3U3()
+            {
+                int?[] position = new int?[] { null, null, -Level / 2 + 1 };
+                foreach (var block in BlocksMatchingPosition(position))
+                {
+                    block.Rotate(Axis.Z, Direction.Negative);
+                }
+            }
+
+            public void Op_4U3()
+            {
+                int?[] position = new int?[] { null, null, -Level / 2 };
+                foreach (var block in BlocksMatchingPosition(position))
+                {
+                    block.Rotate(Axis.Z, Direction.Negative);
+                }
+            }
+
+            public void Op_1L3()
+            {
+                int?[] position = new int?[] { null, -Level / 2, null };
+                foreach (var block in BlocksMatchingPosition(position))
+                {
+                    block.Rotate(Axis.Y, Direction.Positive);
+                }
+            }
+
+            public void Op_2L3()
+            {
+                int?[] position = new int?[] { null, -Level / 2 + 1, null };
+                foreach (var block in BlocksMatchingPosition(position))
+                {
+                    block.Rotate(Axis.Y, Direction.Positive);
+                }
+            }
+
+            public void Op_3L3()
+            {
+                int?[] position = new int?[] { null, Level / 2 - 1, null };
+                foreach (var block in BlocksMatchingPosition(position))
+                {
+                    block.Rotate(Axis.Y, Direction.Positive);
+                }
+            }
+
+            public void Op_4L3()
+            {
+                int?[] position = new int?[] { null, Level / 2, null };
+                foreach (var block in BlocksMatchingPosition(position))
+                {
+                    block.Rotate(Axis.Y, Direction.Positive);
+                }
+            }
+
+            public void Op_1F2()
+            {
+                int?[] position = new int?[] { Level / 2, null, null };
+                foreach (var block in BlocksMatchingPosition(position))
+                {
+                    block.Reflect(Axis.X);
+                }
+            }
+
+            public void Op_2F2()
+            {
+                int?[] position = new int?[] { Level / 2 - 1, null, null };
+                foreach (var block in BlocksMatchingPosition(position))
+                {
+                    block.Reflect(Axis.X);
+                }
+            }
+
+            public void Op_3F2()
+            {
+                int?[] position = new int?[] { -Level / 2 + 1, null, null };
+                foreach (var block in BlocksMatchingPosition(position))
+                {
+                    block.Reflect(Axis.X);
+                }
+            }
+
+            public void Op_4F2()
+            {
+                int?[] position = new int?[] { -Level / 2, null, null };
+                foreach (var block in BlocksMatchingPosition(position))
+                {
+                    block.Reflect(Axis.X);
+                }
+            }
+
+            public void Op_1U2()
+            {
+                int?[] position = new int?[] { null, null, Level / 2 };
+                foreach (var block in BlocksMatchingPosition(position))
+                {
+                    block.Reflect(Axis.Z);
+                }
+            }
+
+            public void Op_2U2()
+            {
+                int?[] position = new int?[] { null, null, Level / 2 - 1 };
+                foreach (var block in BlocksMatchingPosition(position))
+                {
+                    block.Reflect(Axis.Z);
+                }
+            }
+
+            public void Op_3U2()
+            {
+                int?[] position = new int?[] { null, null, -Level / 2 + 1 };
+                foreach (var block in BlocksMatchingPosition(position))
+                {
+                    block.Reflect(Axis.Z);
+                }
+            }
+
+            public void Op_4U2()
+            {
+                int?[] position = new int?[] { null, null, -Level / 2 };
+                foreach (var block in BlocksMatchingPosition(position))
+                {
+                    block.Reflect(Axis.Z);
+                }
+            }
+
+            public void Op_1L2()
+            {
+                int?[] position = new int?[] { null, -Level / 2, null };
+                foreach (var block in BlocksMatchingPosition(position))
+                {
+                    block.Reflect(Axis.Y);
+                }
+            }
+
+            public void Op_2L2()
+            {
+                int?[] position = new int?[] { null, -Level / 2 + 1, null };
+                foreach (var block in BlocksMatchingPosition(position))
+                {
+                    block.Reflect(Axis.Y);
+                }
+            }
+
+            public void Op_3L2()
+            {
+                int?[] position = new int?[] { null, Level / 2 - 1, null };
+                foreach (var block in BlocksMatchingPosition(position))
+                {
+                    block.Reflect(Axis.Y);
+                }
+            }
+
+            public void Op_4L2()
+            {
+                int?[] position = new int?[] { null, Level / 2, null };
+                foreach (var block in BlocksMatchingPosition(position))
+                {
+                    block.Reflect(Axis.Y);
                 }
             }
 

@@ -314,14 +314,15 @@ namespace GroupTheory_RubiksCube
                     }
                     else
                     {
-                        // Since we have new generators added, we want to give
-                        // previously rejected ones a new chance
-                        RejectedGenerators.Clear();
-
                         Console.WriteLine(
                             $"Stablized[{Stablized.Indexes.Count}] " +
                             $"AddGeneratorIncrementally: Accepted new generator: " +
-                            $"foundStateCount={foundStateCount} newGenerator=[{newGenerator}]");
+                            $"foundStateCount={foundStateCount} Generators={Generators.Count} " +
+                            $"Cosets={OrbitToCoset.Count} RejectedGenerators={RejectedGenerators.Count} " +
+                            $"newGenerator=[{newGenerator}] ");
+
+                        // Since we have new generators added, we give previously rejected a new chance
+                        RejectedGenerators.Clear();
                     }
                     return foundStateCount;
                 }
@@ -505,4 +506,7 @@ namespace GroupTheory_RubiksCube
 // TODO if we rotated from a coset representative, we should reuse the middle cubestate
 // TODO it's not because the deeper in stablizier chain we have more combinations, but because we have longer generators, which cost significantly more time
 // TODO a lot of generators share common parts, can we index them and cache?
+
 // TODO how do we make generators shorter? Can we build a equivalent map, or use some equivalent map online?
+// TODO 1F3 etc can be mapped to reverse operation, as a single operation supported by cubestate
+// TODO 1F2 etc can also be mapped to reverse operation, as a single operation supported by cubestate
