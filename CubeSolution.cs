@@ -12,6 +12,7 @@ namespace GroupTheory_RubiksCube
             {
                 public BlockSet Stablized;
                 public HashSet<CubeAction> Generators;
+                public HashSet<CubeAction> RejectedGenerators;
 
                 public BlockSet ToStablize;
                 public Dictionary<BlockSet, CubeAction> OrbitToCoset;
@@ -275,7 +276,16 @@ namespace GroupTheory_RubiksCube
                     {
                         Generators = new HashSet<CubeAction>();
                     }
+                    if (null == RejectedGenerators)
+                    {
+                        RejectedGenerators = new HashSet<CubeAction>();
+                    }
+
                     if (Generators.Contains(newGenerator))
+                    {
+                        return 0;
+                    }
+                    if (RejectedGenerators.Contains(newGenerator))
                     {
                         return 0;
                     }
@@ -300,9 +310,14 @@ namespace GroupTheory_RubiksCube
                     if (foundStateCount <= 0)
                     {
                         Generators.Remove(newGenerator);
+                        RejectedGenerators.Add(newGenerator);
                     }
                     else
                     {
+                        // Since we have new generators added, we want to give
+                        // previously rejected ones a new chance
+                        RejectedGenerators.Clear();
+
                         Console.WriteLine(
                             $"Stablized[{Stablized.Indexes.Count}] " +
                             $"AddGeneratorIncrementally: Accepted new generator: " +
@@ -488,6 +503,6 @@ namespace GroupTheory_RubiksCube
 }
 
 // TODO if we rotated from a coset representative, we should reuse the middle cubestate
-// TODO cpu profile, is there a way to make BlocksMatchingPosition faster?
 // TODO it's not because the deeper in stablizier chain we have more combinations, but because we have longer generators, which cost significantly more time
 // TODO a lot of generators share common parts, can we index them and cache?
+// TODO how do we make generators shorter? Can we build a equivalent map, or use some equivalent map online?
