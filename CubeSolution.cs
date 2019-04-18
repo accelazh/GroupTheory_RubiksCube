@@ -349,58 +349,45 @@ namespace GroupTheory_RubiksCube
 
             public CubeSolution()
             {
-                StablizerChain = StablizerChain_OneByOne();
+                // Along each GStep, the generator length grow exponentially.
+                // Naviely, by bigger step length, we should be able to reduce
+                // the generator length in the end. However, as tested, there
+                // is no significant effect.
+                StablizerChain = StablizerChain_FixedStep(1);
             }
 
-            private List<BlockSet> StablizerChain_OneByOne()
+            private List<BlockSet> StablizerChain_FixedStep(int stepLength)
             {
                 var ret = new List<BlockSet>();
                 var state = new CubeState();
 
-                var solvingOrder = Enumerable.Range(0, state.Blocks.Length).OrderBy(i => i, new CubeBlockIndexComparator(state)).ToList();
+                var solvingOrder = Enumerable.Range(0, state.Blocks.Length)
+                        .OrderBy(i => i, new CubeBlockIndexComparator(state))
+                        .ToList();
 
-                foreach (int order in solvingOrder)
+                var iterator = solvingOrder.GetEnumerator();
+                bool moveForward = true;
+                while (moveForward)
                 {
-                    ret.Add(new BlockSet(state, new List<int>() { order }));
-                }
-
-                return ret;
-            }
-
-            private List<BlockSet> StablierChain_CornerEdgeFace()
-            {
-                var ret = new List<BlockSet>();
-                var state = new CubeState();
-
-                var cornerBlocks = new BlockSet(state);
-                var edgeBlocks = new BlockSet(state);
-                var faceBlocks = new BlockSet(state);
-
-                for (int i = 0; i < state.Blocks.Length; i++)
-                {
-                    var block = state.Blocks[i];
-                    switch(block.GetBlockType())
+                    var blockSet = new BlockSet(state);
+                    for (int i = 0; i < stepLength; i++)
                     {
-                        case CubeState.Block.Type.Corner:
-                            cornerBlocks.Indexes.Add(i);
+                        if (iterator.MoveNext())
+                        {
+                            blockSet.Indexes.Add(iterator.Current);
+                        }
+                        else
+                        {
+                            moveForward = false;
                             break;
+                        }
+                    }
 
-                        case CubeState.Block.Type.Edge:
-                            edgeBlocks.Indexes.Add(i);
-                            break;
-
-                        case CubeState.Block.Type.Face:
-                            faceBlocks.Indexes.Add(i);
-                            break;
-
-                        default:
-                            throw new ArgumentException();
+                    if (blockSet.Indexes.Count > 0)
+                    {
+                        ret.Add(blockSet);
                     }
                 }
-
-                ret.Add(cornerBlocks);
-                ret.Add(edgeBlocks);
-                ret.Add(faceBlocks);
 
                 return ret;
             }
@@ -508,5 +495,3 @@ namespace GroupTheory_RubiksCube
 // TODO a lot of generators share common parts, can we index them and cache?
 
 // TODO how do we make generators shorter? Can we build a equivalent map, or use some equivalent map online?
-// TODO 1F3 etc can be mapped to reverse operation, as a single operation supported by cubestate
-// TODO 1F2 etc can also be mapped to reverse operation, as a single operation supported by cubestate
