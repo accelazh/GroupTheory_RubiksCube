@@ -11,7 +11,20 @@ namespace GroupTheory_RubiksCube
         {
             public List<CubeOp.Type> Ops = new List<CubeOp.Type>();
 
+            private static Dictionary<CubeState, CubeAction> ActionShrinkDict;
+
+            public enum SimplifyLevel
+            {
+                Level0 = 0,
+                Level1 = 1,
+            }
+
             public CubeAction()
+            {
+                // Do nothing
+            }
+
+            public CubeAction(CubeAction other) : this(other.Ops)
             {
                 // Do nothing
             }
@@ -61,7 +74,7 @@ namespace GroupTheory_RubiksCube
                 var copiedOps = new List<CubeOp.Type>(Ops);
                 copiedOps.AddRange(other.Ops);
                 var ret = new CubeAction(copiedOps);
-                var retSimplified = ret.Simplify();
+                var retSimplified = ret.Simplify(SimplifyLevel.Level0);
 
                 return retSimplified;
             }
@@ -88,11 +101,176 @@ namespace GroupTheory_RubiksCube
                 }
             }
 
-            public CubeAction Simplify()
+            private static void LazyInitActionShrink()
+            {
+                if (ActionShrinkDict != null)
+                {
+                    return;
+                }
+
+                // Bigger than 5 may OOM on my desktop
+                const int DICT_SCAN_ROUNDS = 5;
+                // To aoivd OOM, exclude reflect and inverse ops after certain rounds
+                const int DICT_SCAN_REDUCED_ROUND = 4;
+
+                ActionShrinkDict = new Dictionary<CubeState, CubeAction>() {
+                    { new CubeState(), new CubeAction() }
+                };
+
+                var fullyWalkedStates = new HashSet<CubeState>();
+                for (int round = 0; round < DICT_SCAN_ROUNDS; round++)
+                {
+                    var needWalkStates = new HashSet<CubeState>(ActionShrinkDict.Keys);
+                    needWalkStates.RemoveWhere(x => fullyWalkedStates.Contains(x));
+
+                    int foundCount = 0;
+                    int walkedCount = 0;
+                    foreach (var state in needWalkStates)
+                    {
+                        foreach (CubeOp.Type op in Enum.GetValues(typeof(CubeOp.Type)))
+                        {
+                            var action = ActionShrinkDict[state];
+                            int sameOpCount = 0;
+                            for (int i = action.Ops.Count - 1; i >= 0; i--)
+                            {
+                                if (action.Ops[i] == op)
+                                {
+                                    sameOpCount++;
+                                }
+                                else
+                                {
+                                    break;
+                                }
+                            }
+
+                            var newStateBase = new CubeState(state);
+                            int turnCount = CubeState.TurnAround - sameOpCount - 1;
+                            if (round >= DICT_SCAN_REDUCED_ROUND)
+                            {
+                                turnCount = 1;
+                            }
+
+                            // Scanning while including the reflect and reverse operations
+                            for (int turn = 1; turn <= turnCount; turn++)
+                            {
+                                CubeOp.Op(newStateBase, op);
+
+                                if (!ActionShrinkDict.ContainsKey(newStateBase))
+                                {
+                                    var newState = new CubeState(newStateBase);
+                                    var newAction = new CubeAction(action);
+                                    newAction.Ops.InsertRange(0, Enumerable.Repeat(op, turn));
+
+                                    ActionShrinkDict.Add(newState, newAction);
+                                    foundCount++;
+                                }
+                            }
+                        }
+                        walkedCount++;
+                    }
+                    fullyWalkedStates.UnionWith(needWalkStates);
+
+                    Console.WriteLine(
+                        $"LazyInitActionShrink: round={round} foundCount={foundCount} " +
+                        $"total={ActionShrinkDict.Count}");
+                }
+
+                //
+                // Verifying
+                //
+
+                foreach (var kv in ActionShrinkDict)
+                {
+                    if (Utils.ShouldVerify())
+                    {
+                        var state = new CubeState();
+                        kv.Value.Act(state);
+                        Utils.DebugAssert(state.Equals(kv.Key));
+                    }
+                }
+            }
+
+            // Incredibly expensive for long operation lists. And as observed in absolutely most cases,
+            // it only reduces 4 length in each match, and <= 2 matches in total.
+            public static void SimplifyActionShrink(List<CubeOp.Type> newOps)
+            {
+                LazyInitActionShrink();
+
+                Console.Write($"SimplifyActionShrink: Len={newOps.Count} ");
+                Console.Out.Flush();
+
+                int foundCount = 0;
+                // We iterate in reverse order because CubeAction.Ops are applied in reverse order
+                for (int startIdx = newOps.Count - 1; startIdx >= 0; startIdx--)  // inclusive
+                {
+                    CubeState probingState = null;
+                    for (int endIdx = startIdx - 1; endIdx >= 0; endIdx--)  // inclusive
+                    {
+                        int opLength = startIdx - endIdx + 1;
+
+                        if (null == probingState)
+                        {
+                            probingState = new CubeState();
+
+                            var action = new CubeAction();
+                            action.Ops = newOps.GetRange(endIdx, opLength);
+                            action.Act(probingState);
+                        }
+                        else
+                        {
+                            // Since we iterate in reverse order, we reuse previous calculation
+                            CubeOp.Op(probingState, newOps[endIdx]);
+                        }
+
+                        if (!ActionShrinkDict.ContainsKey(probingState))
+                        {
+                            continue;
+                        }
+
+                        var shortAction = ActionShrinkDict[probingState];
+                        if (shortAction.Ops.Count >= opLength)
+                        {
+                            continue;
+                        }
+
+                        //
+                        // We found a match. Replace it with a shorter op list.
+                        //
+                        // Though we could wait for a longer match of op list,
+                        // or we scan the entire list again after replacement,
+                        // by observation, the current greedy strategy below
+                        // yields good enough result and better performance.
+                        //
+
+                        newOps.RemoveRange(endIdx, opLength);
+                        newOps.InsertRange(endIdx, shortAction.Ops);
+
+                        startIdx = endIdx + shortAction.Ops.Count - 1;
+                        if (startIdx <= endIdx)
+                        {
+                            endIdx = startIdx - 1;
+                        }
+
+                        foundCount++;
+                        Console.Write(
+                            $"{foundCount}:[{opLength}=>{shortAction.Ops.Count}," +
+                            $"Len:{newOps.Count},Action:[{shortAction}]] ");
+                        Console.Out.Flush();
+                    }
+                }
+
+                Console.WriteLine("done");
+            }
+
+            public CubeAction Simplify(SimplifyLevel level)
             {
                 var newOps = new List<CubeOp.Type>(Ops);
 
                 SimplifyNoops(newOps);
+                if (level >= SimplifyLevel.Level1)
+                {
+                    SimplifyActionShrink(newOps);
+                }
 
                 var newAction = new CubeAction(newOps);
                 if (Utils.ShouldVerify())

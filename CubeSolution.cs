@@ -50,6 +50,7 @@ namespace GroupTheory_RubiksCube
                         Utils.DebugAssert(startCoset != null);
 
                         var newCoset = generator.Mul(startCoset);
+                        newCoset = newCoset.Simplify(CubeAction.SimplifyLevel.Level1);
                         OrbitToCoset.Add(newState, newCoset);
                     }
 
@@ -291,7 +292,6 @@ namespace GroupTheory_RubiksCube
                     }
 
                     int foundStateCount = 0;
-
                     {
                         var newStates = ExploreOrbitToCosetIncrementally(newGenerator);
                         foundStateCount += newStates.Count;
@@ -323,6 +323,14 @@ namespace GroupTheory_RubiksCube
 
                         // Since we have new generators added, we give previously rejected a new chance
                         RejectedGenerators.Clear();
+
+                        // Put in the simpliied newGenerator. Note that we don't simplify generator
+                        // when passed in this method, because it needs to walk through much more
+                        // generators, and in many cases they don't reduce generator length at all.
+                        bool removeRet = Generators.Remove(newGenerator);
+                        Utils.DebugAssert(removeRet);
+                        newGenerator = newGenerator.Simplify(CubeAction.SimplifyLevel.Level1);
+                        Generators.Add(newGenerator);
                     }
                     return foundStateCount;
                 }
@@ -493,5 +501,3 @@ namespace GroupTheory_RubiksCube
 // TODO if we rotated from a coset representative, we should reuse the middle cubestate
 // TODO it's not because the deeper in stablizier chain we have more combinations, but because we have longer generators, which cost significantly more time
 // TODO a lot of generators share common parts, can we index them and cache?
-
-// TODO how do we make generators shorter? Can we build a equivalent map, or use some equivalent map online?
