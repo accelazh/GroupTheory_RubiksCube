@@ -314,6 +314,14 @@ namespace GroupTheory_RubiksCube
                     }
                     else
                     {
+                        // Put in the simpliied newGenerator. Note that we don't simplify generator
+                        // when passed in this method, because it needs to walk through much more
+                        // generators, and in many cases they don't reduce generator length at all.
+                        bool removeRet = Generators.Remove(newGenerator);
+                        Utils.DebugAssert(removeRet);
+                        newGenerator = newGenerator.Simplify(CubeAction.SimplifyLevel.Level1);
+                        Generators.Add(newGenerator);
+
                         Console.WriteLine(
                             $"Stablized[{Stablized.Indexes.Count}] " +
                             $"AddGeneratorIncrementally: Accepted new generator: " +
@@ -323,14 +331,6 @@ namespace GroupTheory_RubiksCube
 
                         // Since we have new generators added, we give previously rejected a new chance
                         RejectedGenerators.Clear();
-
-                        // Put in the simpliied newGenerator. Note that we don't simplify generator
-                        // when passed in this method, because it needs to walk through much more
-                        // generators, and in many cases they don't reduce generator length at all.
-                        bool removeRet = Generators.Remove(newGenerator);
-                        Utils.DebugAssert(removeRet);
-                        newGenerator = newGenerator.Simplify(CubeAction.SimplifyLevel.Level1);
-                        Generators.Add(newGenerator);
                     }
                     return foundStateCount;
                 }
@@ -476,7 +476,7 @@ namespace GroupTheory_RubiksCube
 
                     var cosetRepresentative = g.OrbitToCoset[observed];
                     var rCosetRepr = cosetRepresentative.Reverse();
-                    
+
                     rCosetRepr.Act(observed.State);
                     ret.Add(rCosetRepr);
 

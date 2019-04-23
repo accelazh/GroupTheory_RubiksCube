@@ -8,3 +8,6 @@ obj/
 *.slnhash
 *.slnhash.userData
 *.slnhash.userData.assemblies
+
+App.config
+*.csproj

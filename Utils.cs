@@ -29,7 +29,7 @@ namespace GroupTheory_RubiksCube
             {
                 return false;
             }
-            
+
             for (int i = 0; i < a.Rank; i++)
             {
                 if (a.GetLength(i) != b.GetLength(i))
