@@ -11,3 +11,4 @@ obj/
 
 App.config
 *.csproj
+Properties/
