@@ -501,3 +501,6 @@ namespace GroupTheory_RubiksCube
 // TODO if we rotated from a coset representative, we should reuse the middle cubestate
 // TODO it's not because the deeper in stablizier chain we have more combinations, but because we have longer generators, which cost significantly more time
 // TODO a lot of generators share common parts, can we index them and cache?
+
+// TODO I observed some generators are highly biased, i.e. it only uses certain cube operations, rather than mixing them up balancedly.
+//      Can we generate generators layer by layer in the first a few layers, so that they are not so imbalanced?
