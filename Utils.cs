@@ -13,7 +13,9 @@ namespace GroupTheory_RubiksCube
         public const int SkipVerifyBase = 1000;
         public const double SkipVerifyRatio = 0.99;
 
-        public const bool PrintProgress = true;
+        public const bool PrintProgress = false;
+
+        private static readonly DateTime Jan1st1970 = new DateTime(1970, 1, 1, 0, 0, 0, DateTimeKind.Utc);
 
         public static int GetHashCode<T>(IEnumerable<T> array)
         {
@@ -157,6 +159,12 @@ namespace GroupTheory_RubiksCube
             {
                 return Utils.GetHashCode(obj);
             }
+        }
+
+        // Thanks to Jon Skeet's answer at https://stackoverflow.com/questions/290227/java-system-currenttimemillis-equivalent-in-c-sharp
+        public static long CurrentTimeMillis()
+        {
+            return (long)(DateTime.UtcNow - Jan1st1970).TotalMilliseconds;
         }
 
         // Thanks to Christian's answer at https://stackoverflow.com/questions/420429/mirroring-console-output-to-a-file

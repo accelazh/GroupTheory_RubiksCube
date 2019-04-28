@@ -502,18 +502,19 @@ namespace GroupTheory_RubiksCube
 
                 var initGenerators = new List<CubeAction>() {
                      new CubeAction(new List<CubeOp.Type>() { CubeOp.Type.Op1F }),
-                     new CubeAction(new List<CubeOp.Type>() { CubeOp.Type.Op2F }),
-                     new CubeAction(new List<CubeOp.Type>() { CubeOp.Type.Op3F }),
-                     new CubeAction(new List<CubeOp.Type>() { CubeOp.Type.Op4F }),
-
                      new CubeAction(new List<CubeOp.Type>() { CubeOp.Type.Op1U }),
-                     new CubeAction(new List<CubeOp.Type>() { CubeOp.Type.Op2U }),
-                     new CubeAction(new List<CubeOp.Type>() { CubeOp.Type.Op3U }),
-                     new CubeAction(new List<CubeOp.Type>() { CubeOp.Type.Op4U }),
-
                      new CubeAction(new List<CubeOp.Type>() { CubeOp.Type.Op1L }),
+
+                     new CubeAction(new List<CubeOp.Type>() { CubeOp.Type.Op2F }),
+                     new CubeAction(new List<CubeOp.Type>() { CubeOp.Type.Op2U }),
                      new CubeAction(new List<CubeOp.Type>() { CubeOp.Type.Op2L }),
+
+                     new CubeAction(new List<CubeOp.Type>() { CubeOp.Type.Op3F }),
+                     new CubeAction(new List<CubeOp.Type>() { CubeOp.Type.Op3U }),
                      new CubeAction(new List<CubeOp.Type>() { CubeOp.Type.Op3L }),
+
+                     new CubeAction(new List<CubeOp.Type>() { CubeOp.Type.Op4F }),
+                     new CubeAction(new List<CubeOp.Type>() { CubeOp.Type.Op4U }),
                      new CubeAction(new List<CubeOp.Type>() { CubeOp.Type.Op4L }),
                 };
 

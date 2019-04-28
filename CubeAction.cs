@@ -19,8 +19,8 @@ namespace GroupTheory_RubiksCube
 
             private List<CubeOp.Type> Ops = new List<CubeOp.Type>();
 
-            // 120 is the experience value by multiple rounds of testing
-            private const int OpCountForAccelerationMap = 120;
+            // 230 is the test verified value as in GroupTest.VerifyOpCountForAccelerationMap()
+            public const int OpCountForAccelerationMap = 230;
             private ActionMap AccelerationMap;
 
             public enum SimplifyLevel
@@ -82,6 +82,10 @@ namespace GroupTheory_RubiksCube
 
             public void Act(CubeState cubeState)
             {
+                if (Ops.Count == 0)
+                {
+                    return;
+                }
 
                 if (AccelerationMap != null
                     || Ops.Count >= OpCountForAccelerationMap)

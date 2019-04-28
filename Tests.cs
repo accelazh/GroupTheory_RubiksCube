@@ -25,6 +25,9 @@ namespace GroupTheory_RubiksCube
 
                 Console.WriteLine("GroupTests: VerifyGroupActionAssociaty ...");
                 VerifyGroupActionAssociaty();
+
+                Console.WriteLine("GroupTests: VerifyOpCountForAccelerationMap ...");
+                VerifyOpCountForAccelerationMap();
             }
 
             public static void VerifyBlockTurnAround()
@@ -192,6 +195,37 @@ namespace GroupTheory_RubiksCube
 
                     Utils.DebugAssert(a_b_c_state.Equals(ab_c_state));
                     Utils.DebugAssert(a_b_c_state.Equals(a_bc_state));
+                }
+            }
+
+            public static void VerifyOpCountForAccelerationMap()
+            {
+                CubeState state = new CubeState();
+
+                CubeAction actionNoAcc = CubeAction.Random(CubeAction.OpCountForAccelerationMap - 1);
+                CubeAction actionAcc = CubeAction.Random(CubeAction.OpCountForAccelerationMap);
+
+                Console.WriteLine(
+                    "Expecting timeNoAcc is similar to timeAcc, " +
+                    "otherwise adjust CubeAction.OpCountForAccelerationMap");
+
+                for (int i = 0; i < 10; i++)
+                {
+                    long timeStart = Utils.CurrentTimeMillis();
+
+                    for (int j = 0; j < 1000; j++)
+                    {
+                        actionNoAcc.Act(state);
+                    }
+                    long timeNoAcc = Utils.CurrentTimeMillis();
+
+                    for (int j = 0; j < 1000; j++)
+                    {
+                        actionAcc.Act(state);
+                    }
+                    long timeAcc = Utils.CurrentTimeMillis();
+
+                    Console.WriteLine($"timeNoAcc={timeNoAcc - timeStart}ms, timeAcc={timeAcc - timeNoAcc}ms");
                 }
             }
         }
