@@ -9,9 +9,19 @@ namespace GroupTheory_RubiksCube
     {
         public class CubeAction : IEquatable<CubeAction>
         {
-            public List<CubeOp.Type> Ops = new List<CubeOp.Type>();
-
+            // We want to disable SimplifyActionShrink because we have better
+            // mechanism, the ActionMap. As tested, SimplifyActionShrink takes
+            // ~3GB memory and is very slow for long generators. Though it reduced
+            // the length of generator significantly as it accumulated level by
+            // level in GStep
+            private static bool DisableActionShrink = true;
             private static Dictionary<CubeState, CubeAction> ActionShrinkDict;
+
+            private List<CubeOp.Type> Ops = new List<CubeOp.Type>();
+
+            // 120 is the experience value by multiple rounds of testing
+            private const int OpCountForAccelerationMap = 120;
+            private ActionMap AccelerationMap;
 
             public enum SimplifyLevel
             {
@@ -24,14 +34,21 @@ namespace GroupTheory_RubiksCube
                 // Do nothing
             }
 
-            public CubeAction(CubeAction other) : this(other.Ops)
+            public CubeAction(CubeAction other)
             {
-                // Do nothing
+                this.Ops = new List<CubeOp.Type>(other.Ops);
+                this.AccelerationMap = other.AccelerationMap;
+
+                this.VerifySetupAccelerationMap();
             }
 
             public CubeAction(IEnumerable<CubeOp.Type> ops)
             {
                 this.Ops = new List<CubeOp.Type>(ops);
+                if (this.Ops.Count > OpCountForAccelerationMap)
+                {
+                    this.LazyBuildAccelerationMap();
+                }
             }
 
             public CubeAction(int[] opInts)
@@ -53,9 +70,96 @@ namespace GroupTheory_RubiksCube
                 return new CubeAction(opInts);
             }
 
+            public List<CubeOp.Type> GetOps()
+            {
+                return new List<CubeOp.Type>(Ops);
+            }
+
+            public int Count()
+            {
+                return Ops.Count;
+            }
+
             public void Act(CubeState cubeState)
             {
+
+                if (AccelerationMap != null
+                    || Ops.Count >= OpCountForAccelerationMap)
+                {
+                    bool shouldVerify = Utils.ShouldVerify();
+
+                    CubeState opsCubeState = null;
+                    if (shouldVerify)
+                    {
+                        opsCubeState = new CubeState(cubeState);
+                        ActOps(opsCubeState);
+                    }
+
+                    ActAccelerationMap(cubeState);
+                    if (shouldVerify)
+                    {
+                        Utils.DebugAssert(opsCubeState.Equals(cubeState));
+                    }
+                }
+                else
+                {
+                    ActOps(cubeState);
+                }
+            }
+
+            private void ActOps(CubeState cubeState)
+            {
                 CubeOp.Op(cubeState, Ops);
+            }
+
+            private void LazyBuildAccelerationMap()
+            {
+                if (AccelerationMap != null)
+                {
+                    return;
+                }
+
+                CubeState original = new CubeState();
+                CubeState current = new CubeState();
+                ActOps(current);
+
+                AccelerationMap = new ActionMap(original, current);
+                VerifyAccelerationMap();
+            }
+
+            private void VerifyAccelerationMap()
+            {
+                if (!Utils.ShouldVerify())
+                {
+                    return;
+                }
+
+                var actionCubeState = new CubeState();
+                ActOps(actionCubeState);
+
+                var mapCubeState = new CubeState();
+                AccelerationMap.Act(mapCubeState);
+
+                Utils.DebugAssert(mapCubeState.Equals(actionCubeState));
+            }
+
+            private void VerifySetupAccelerationMap()
+            {
+                if (!Utils.ShouldVerify())
+                {
+                    return;
+                }
+
+                if (Ops.Count > OpCountForAccelerationMap)
+                {
+                    Utils.DebugAssert(AccelerationMap != null);
+                }
+            }
+
+            private void ActAccelerationMap(CubeState cubeState)
+            {
+                LazyBuildAccelerationMap();
+                AccelerationMap.Act(cubeState);
             }
 
             public CubeAction Reverse()
@@ -66,22 +170,42 @@ namespace GroupTheory_RubiksCube
                     reverseOps.AddRange(CubeOp.Reverse(opType));
                 }
 
-                return new CubeAction(reverseOps);
+                var ret = new CubeAction(reverseOps);
+                if (AccelerationMap != null)
+                {
+                    ret.AccelerationMap = AccelerationMap.Reverse();
+                    ret.VerifyAccelerationMap();
+                }
+
+                ret.VerifySetupAccelerationMap();
+                return ret;
             }
 
             public CubeAction Mul(CubeAction other)
             {
-                var copiedOps = new List<CubeOp.Type>(Ops);
-                copiedOps.AddRange(other.Ops);
-                var ret = new CubeAction(copiedOps);
+                if (Ops.Count + other.Ops.Count > OpCountForAccelerationMap)
+                {
+                    // As tested, without aggressively propagate building AccelerationMap,
+                    // there can be many long generators * short generators, that resulted
+                    // in new long generators without AccelerationMap.
+                    LazyBuildAccelerationMap();
+                    other.LazyBuildAccelerationMap();
+                }
+
+                var mulOps = new List<CubeOp.Type>(Ops);
+                mulOps.AddRange(other.Ops);
+
+                var ret = new CubeAction(mulOps);
                 var retSimplified = ret.Simplify(SimplifyLevel.Level0);
 
-                return retSimplified;
-            }
+                if (AccelerationMap != null && other.AccelerationMap != null)
+                {
+                    retSimplified.AccelerationMap = AccelerationMap.Mul(other.AccelerationMap);
+                    retSimplified.VerifyAccelerationMap();
+                }
 
-            public static CubeAction Mul(CubeAction a, CubeAction b)
-            {
-                return a.Mul(b);
+                retSimplified.VerifySetupAccelerationMap();
+                return retSimplified;
             }
 
             private static void SimplifyNoops(List<CubeOp.Type> newOps)
@@ -184,7 +308,7 @@ namespace GroupTheory_RubiksCube
                     if (Utils.ShouldVerify())
                     {
                         var state = new CubeState();
-                        kv.Value.Act(state);
+                        kv.Value.ActOps(state);
                         Utils.DebugAssert(state.Equals(kv.Key));
                     }
                 }
@@ -194,6 +318,11 @@ namespace GroupTheory_RubiksCube
             // it only reduces 4 length in each match, and <= 2 matches in total.
             public static void SimplifyActionShrink(List<CubeOp.Type> newOps)
             {
+                if (DisableActionShrink)
+                {
+                    return;
+                }
+
                 LazyInitActionShrink();
 
                 Console.Write($"SimplifyActionShrink: Len={newOps.Count} ");
@@ -214,7 +343,7 @@ namespace GroupTheory_RubiksCube
 
                             var action = new CubeAction();
                             action.Ops = newOps.GetRange(endIdx, opLength);
-                            action.Act(probingState);
+                            action.ActOps(probingState);
                         }
                         else
                         {
@@ -273,6 +402,17 @@ namespace GroupTheory_RubiksCube
                 }
 
                 var newAction = new CubeAction(newOps);
+                if (AccelerationMap != null)
+                {
+                    newAction.AccelerationMap = new ActionMap(AccelerationMap);
+                }
+
+                if (newAction.Ops.Count > OpCountForAccelerationMap)
+                {
+                    Utils.DebugAssert(newAction.AccelerationMap != null);
+                }
+
+                newAction.VerifySetupAccelerationMap();
                 if (Utils.ShouldVerify())
                 {
                     Utils.DebugAssert(newAction.Equals(this));
@@ -284,7 +424,7 @@ namespace GroupTheory_RubiksCube
             {
                 CubeState setupState = new CubeState();
                 CubeAction setupAction = Random(actionLength);
-                setupAction.Act(setupState);
+                setupAction.ActOps(setupState);
 
                 return setupState;
             }
@@ -294,6 +434,30 @@ namespace GroupTheory_RubiksCube
                 return Equals(obj as CubeAction);
             }
 
+            private bool EqualOps(CubeAction obj)
+            {
+                var stateThis = new CubeState();
+                var stateObj = new CubeState();
+
+                this.ActOps(stateThis);
+                obj.ActOps(stateObj);
+
+                bool opsEqual = stateThis.Equals(stateObj);
+                return opsEqual;
+            }
+
+            private bool EqualAct(CubeAction obj)
+            {
+                var stateThis = new CubeState();
+                var stateObj = new CubeState();
+
+                this.Act(stateThis);
+                obj.Act(stateObj);
+
+                bool actEqual = stateThis.Equals(stateObj);
+                return actEqual;
+            }
+
             public bool Equals(CubeAction obj)
             {
                 if (null == obj)
@@ -301,13 +465,39 @@ namespace GroupTheory_RubiksCube
                     return false;
                 }
 
-                var stateThis = new CubeState();
-                var stateObj = new CubeState();
+                bool? opsEqual = null;
+                bool? mapEqual = null;
 
-                this.Act(stateThis);
-                obj.Act(stateObj);
+                if (Utils.ShouldVerify())
+                {
+                    opsEqual = EqualOps(obj);
+                }
 
-                return stateThis.Equals(stateObj);
+                VerifySetupAccelerationMap();
+                obj.VerifySetupAccelerationMap();
+                if (AccelerationMap != null && obj.AccelerationMap != null)
+                {
+                    mapEqual = AccelerationMap.Equals(obj.AccelerationMap);
+                }
+
+                if (opsEqual.HasValue && mapEqual.HasValue)
+                {
+                    Utils.DebugAssert(opsEqual == mapEqual);
+                    return mapEqual.Value;
+                }
+                else if (mapEqual.HasValue)
+                {
+                    return mapEqual.Value;
+                }
+                else if (opsEqual.HasValue)
+                {
+                    return opsEqual.Value;
+                }
+                else
+                {
+                    bool actEqual = EqualAct(obj);
+                    return actEqual;
+                }
             }
 
             public override int GetHashCode()

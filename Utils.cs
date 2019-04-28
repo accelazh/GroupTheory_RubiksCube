@@ -9,8 +9,11 @@ namespace GroupTheory_RubiksCube
     public static class Utils
     {
         public static readonly Random GlobalRandom = new Random();
+
         public const int SkipVerifyBase = 1000;
         public const double SkipVerifyRatio = 0.99;
+
+        public const bool PrintProgress = true;
 
         public static int GetHashCode<T>(IEnumerable<T> array)
         {

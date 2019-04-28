@@ -78,7 +78,7 @@ namespace GroupTheory_RubiksCube
                 /// perpendicular with it, and to which positive/negative direction it is on that
                 /// axis. The block can rotate, but each X/Y/Z axis is absolute.
                 /// </summary>
-                public Color[,] Color = new Color[Enum.GetNames(typeof(Axis)).Length,
+                public Color[,] Colors = new Color[Enum.GetNames(typeof(Axis)).Length,
                                                     Enum.GetNames(typeof(Direction)).Length];
 
                 public Block()
@@ -89,7 +89,7 @@ namespace GroupTheory_RubiksCube
                 public Block(Block other)
                 {
                     Array.Copy(other.Position, this.Position, this.Position.Length);
-                    Array.Copy(other.Color, this.Color, this.Color.Length);
+                    Array.Copy(other.Colors, this.Colors, this.Colors.Length);
                 }
 
                 // May generate infeasible block position and color
@@ -100,9 +100,9 @@ namespace GroupTheory_RubiksCube
                         Position[i] = Utils.GlobalRandom.Next(-Level / 2, Level / 2 + 1);
                     }
 
-                    for (int i = 0; i < Color.Length; i++)
+                    for (int i = 0; i < Colors.Length; i++)
                     {
-                        Color[i / Enum.GetNames(typeof(Direction)).Length,
+                        Colors[i / Enum.GetNames(typeof(Direction)).Length,
                                 i % Enum.GetNames(typeof(Direction)).Length]
                             = (Color)Utils.GlobalRandom.Next(0, Enum.GetNames(typeof(Color)).Length);
                     }
@@ -226,23 +226,23 @@ namespace GroupTheory_RubiksCube
                 // Similarly, vAxis must point up and hAxis must point right.
                 private void RotateColor2D_Clockwise(int hAxisIdx, int vAxisIdx)
                 {
-                    var oldVAxisPositive = Color[vAxisIdx, (int)Direction.Positive];
+                    var oldVAxisPositive = Colors[vAxisIdx, (int)Direction.Positive];
 
-                    Color[vAxisIdx, (int)Direction.Positive] = Color[hAxisIdx, (int)Direction.Negative];
-                    Color[hAxisIdx, (int)Direction.Negative] = Color[vAxisIdx, (int)Direction.Negative];
-                    Color[vAxisIdx, (int)Direction.Negative] = Color[hAxisIdx, (int)Direction.Positive];
-                    Color[hAxisIdx, (int)Direction.Positive] = oldVAxisPositive;
+                    Colors[vAxisIdx, (int)Direction.Positive] = Colors[hAxisIdx, (int)Direction.Negative];
+                    Colors[hAxisIdx, (int)Direction.Negative] = Colors[vAxisIdx, (int)Direction.Negative];
+                    Colors[vAxisIdx, (int)Direction.Negative] = Colors[hAxisIdx, (int)Direction.Positive];
+                    Colors[hAxisIdx, (int)Direction.Positive] = oldVAxisPositive;
                 }
 
                 // Similarly, vAxis must point up and hAxis must point right.
                 private void RotateColor2D_CounterClockwise(int hAxisIdx, int vAxisIdx)
                 {
-                    var oldVAxisPositive = Color[vAxisIdx, (int)Direction.Positive];
+                    var oldVAxisPositive = Colors[vAxisIdx, (int)Direction.Positive];
 
-                    Color[vAxisIdx, (int)Direction.Positive] = Color[hAxisIdx, (int)Direction.Positive];
-                    Color[hAxisIdx, (int)Direction.Positive] = Color[vAxisIdx, (int)Direction.Negative];
-                    Color[vAxisIdx, (int)Direction.Negative] = Color[hAxisIdx, (int)Direction.Negative];
-                    Color[hAxisIdx, (int)Direction.Negative] = oldVAxisPositive;
+                    Colors[vAxisIdx, (int)Direction.Positive] = Colors[hAxisIdx, (int)Direction.Positive];
+                    Colors[hAxisIdx, (int)Direction.Positive] = Colors[vAxisIdx, (int)Direction.Negative];
+                    Colors[vAxisIdx, (int)Direction.Negative] = Colors[hAxisIdx, (int)Direction.Negative];
+                    Colors[hAxisIdx, (int)Direction.Negative] = oldVAxisPositive;
                 }
 
                 public void Reflect(Axis axis)
@@ -299,13 +299,13 @@ namespace GroupTheory_RubiksCube
                 {
                     Color tmp;
 
-                    tmp = Color[hAxisIdx, (int)Direction.Positive];
-                    Color[hAxisIdx, (int)Direction.Positive] = Color[hAxisIdx, (int)Direction.Negative];
-                    Color[hAxisIdx, (int)Direction.Negative] = tmp;
+                    tmp = Colors[hAxisIdx, (int)Direction.Positive];
+                    Colors[hAxisIdx, (int)Direction.Positive] = Colors[hAxisIdx, (int)Direction.Negative];
+                    Colors[hAxisIdx, (int)Direction.Negative] = tmp;
 
-                    tmp = Color[vAxisIdx, (int)Direction.Positive];
-                    Color[vAxisIdx, (int)Direction.Positive] = Color[vAxisIdx, (int)Direction.Negative];
-                    Color[vAxisIdx, (int)Direction.Negative] = tmp;
+                    tmp = Colors[vAxisIdx, (int)Direction.Positive];
+                    Colors[vAxisIdx, (int)Direction.Positive] = Colors[vAxisIdx, (int)Direction.Negative];
+                    Colors[vAxisIdx, (int)Direction.Negative] = tmp;
                 }
 
                 public static int GetPositionBoundaryCount(int[] position)
@@ -356,7 +356,7 @@ namespace GroupTheory_RubiksCube
 
                 public List<Color> GetSortedColors()
                 {
-                    return this.Color.Cast<Color>()
+                    return this.Colors.Cast<Color>()
                             .Where(c => c != CubeState.Color.None)
                             .OrderBy(c => c)
                             .ToList();
@@ -378,7 +378,7 @@ namespace GroupTheory_RubiksCube
                     {
                         return false;
                     }
-                    if (!Utils.Array2DEqual(Color, obj.Color))
+                    if (!Utils.Array2DEqual(Colors, obj.Colors))
                     {
                         return false;
                     }
@@ -388,7 +388,7 @@ namespace GroupTheory_RubiksCube
 
                 public override int GetHashCode()
                 {
-                    return Utils.GetHashCode(Position.Concat(Color.Cast<int>()));
+                    return Utils.GetHashCode(Position.Concat(Colors.Cast<int>()));
                 }
 
                 // Useful to decide which block we want to solve first
@@ -430,11 +430,11 @@ namespace GroupTheory_RubiksCube
                         }
                     }
 
-                    for (int i = 0; i < Color.GetLength(0); i++)
+                    for (int i = 0; i < Colors.GetLength(0); i++)
                     {
-                        for (int j = 0; j < Color.GetLength(1); j++)
+                        for (int j = 0; j < Colors.GetLength(1); j++)
                         {
-                            compareRet = Color[i, j] - other.Color[i, j];
+                            compareRet = Colors[i, j] - other.Colors[i, j];
                             if (compareRet != 0)
                             {
                                 return compareRet;
@@ -459,7 +459,7 @@ namespace GroupTheory_RubiksCube
                     {
                         foreach (Direction direction in Enum.GetValues(typeof(Direction)))
                         {
-                            strOut.Append(Char.ToLower(Color[(int)axis, (int)direction].ToString()[0]));
+                            strOut.Append(Char.ToLower(Colors[(int)axis, (int)direction].ToString()[0]));
                         }
                     }
 
@@ -469,9 +469,16 @@ namespace GroupTheory_RubiksCube
 
             // We track each block to follow where it goes, rather than track each cube slot
             // to see which block the slot is holding. (The later leads to a different group
-            // structure)
+            // structure.)
             //
-            // TODO comment why we choose NOT later.
+            // Previously we tried the later way, tracking a slot has which block. It turned
+            // out didn't work. Because when we multiplied a (coset representative)^(-1) to
+            // the slot to trace back to the original state, what the slot becomes depends on
+            // its neighbors and other slots.
+            //
+            // However, tracking by block doesn't have this problem. When we multiply a
+            // (coset representative)^(-1) on a block, what it becomes have no dependency
+            // on its neighbors or other blocks. The block always goes back to the original.
             public Block[] Blocks = new Block[BlockCount];
 
             // We use axis * direction to represent face, see Block.Color
@@ -567,7 +574,7 @@ namespace GroupTheory_RubiksCube
                                 var block = GetBlockAt(position);
                                 Utils.DebugAssert(block != null);
 
-                                block.Color[(int)axis, (int)direction] = color;
+                                block.Colors[(int)axis, (int)direction] = color;
                             }
                         }
                     }
@@ -593,8 +600,10 @@ namespace GroupTheory_RubiksCube
                         throw new ArgumentException();
                 }
 
-                List<Axis> remainingAxes = Enum.GetValues(typeof(Axis)).Cast<Axis>().ToList();
-                remainingAxes.Remove(axis);
+                var remainingAxes = Enum.GetValues(typeof(Axis))
+                                        .Cast<Axis>()
+                                        .Where(a => a != axis)
+                                        .ToList();
                 Utils.DebugAssert(remainingAxes.Count == 2);
 
                 for (position[(int)remainingAxes[0]] = -Level / 2;
@@ -638,10 +647,7 @@ namespace GroupTheory_RubiksCube
                 {
                     foreach (Axis axis in Enum.GetValues(typeof(Axis)))
                     {
-                        if (Math.Abs(block.Position[(int)axis]) > Level / 2)
-                        {
-                            throw new ArgumentException();
-                        }
+                        Utils.DebugAssert(Math.Abs(block.Position[(int)axis]) <= Level / 2);
                     }
                 }
 
@@ -676,7 +682,7 @@ namespace GroupTheory_RubiksCube
                         foreach (int[] position in CubeFacePositions(axis, direction))
                         {
                             var block = GetBlockAt(position);
-                            Utils.DebugAssert(block.Color[(int)axis, (int)direction] != Color.None);
+                            Utils.DebugAssert(block.Colors[(int)axis, (int)direction] != Color.None);
                         }
                     }
                 }
@@ -689,7 +695,7 @@ namespace GroupTheory_RubiksCube
                 int blockColorSideCount = 0;
                 foreach (var block in Blocks)
                 {
-                    foreach (Color color in block.Color)
+                    foreach (Color color in block.Colors)
                     {
                         if (color != Color.None)
                         {
@@ -707,7 +713,7 @@ namespace GroupTheory_RubiksCube
                 int[] colorCount = new int[Enum.GetNames(typeof(Color)).Length];
                 foreach (var block in Blocks)
                 {
-                    foreach (Color color in block.Color)
+                    foreach (Color color in block.Colors)
                     {
                         colorCount[(int)color]++;
                     }
@@ -766,6 +772,16 @@ namespace GroupTheory_RubiksCube
                 Utils.DebugAssert(Blocks.Where(b => b.GetBlockType() == Block.Type.Face)
                     .GroupBy(b => b.GetSortedColors(), new Utils.ListEqualityComparator<Color>())
                     .All(g => g.Count() == FaceBlockSameColorCount));
+
+                //
+                // No block has two faces of same color
+                //
+
+                foreach (var block in Blocks)
+                {
+                    var colors = block.GetSortedColors();
+                    Utils.DebugAssert(colors.Count == colors.Distinct().Count());
+                }
             }
 
             // If position[X] is null, it means matching anything
@@ -1122,7 +1138,7 @@ namespace GroupTheory_RubiksCube
                 int count = 0;
                 foreach (var block in BlocksAtPositions(CubeFacePositions(axis, direction)))
                 {
-                    strOut.Append($"{block.Color[(int)axis, (int)direction].ToString()[0]} ");
+                    strOut.Append($"{block.Colors[(int)axis, (int)direction].ToString()[0]} ");
 
                     count++;
                     if (count % Level == 0)
@@ -1171,11 +1187,6 @@ namespace GroupTheory_RubiksCube
             public bool IsMine(Block other)
             {
                 return Blocks.Any(b => Object.ReferenceEquals(b, other));
-            }
-
-            public bool IsMine(IEnumerable<Block> other)
-            {
-                return other.All(o => Blocks.Any(b => Object.ReferenceEquals(b, o)));
             }
 
             public bool IsSameBlockArrangement(CubeState other)

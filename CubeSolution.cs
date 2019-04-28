@@ -8,9 +8,15 @@ namespace GroupTheory_RubiksCube
     {
         public class CubeSolution
         {
+            /// <summary>
+            /// One of the steps on the stablizer chain. It is a group of cube actions
+            /// that won't move the Stablized BlockSet, i.e. to stablize them. The group
+            /// is represented by its generators.
+            /// </summary>
             public class GStep
             {
                 public BlockSet Stablized;
+
                 public HashSet<CubeAction> Generators;
                 public HashSet<CubeAction> RejectedGenerators;
 
@@ -172,6 +178,15 @@ namespace GroupTheory_RubiksCube
                     return cosetRepresentative;
                 }
 
+                /// <summary>
+                /// By (slightly changed version of) Prop 4.7 in Group Theory J.S. Milne, we know the
+                /// orbit of the blocks we are observing, is 1-on-1 mapping to the set of *right* cosets
+                /// divided by stablizer subgroup of the blocks we are observing.
+                ///
+                /// In this way, by traversal through each possible state of the the blocks we are observing,
+                /// we can discover each of the cosets of the stablizer subgroup, which will later be input
+                /// into Schreier subgroup lemma to obtain the stablizer subgroup's generators.
+                /// </summary>
                 private HashSet<BlockSet> ExploreOrbitToCosetIncrementally(CubeAction newGenerator)
                 {
                     if (null == OrbitToCoset)
@@ -217,6 +232,11 @@ namespace GroupTheory_RubiksCube
                     return newStates;
                 }
 
+                /// <summary>
+                /// To obtain the generators of stablizer subgroup, by Schreier subgroup lemma as stated
+                /// at https://www.jaapsch.net/puzzles/schreier.htm. We need to input the generators of
+                /// group, and the sets of cosets of the stablizer subgroup.
+                /// </summary>
                 private CubeAction ObtainGeneratorOfStablizerSubgroup(
                                     CubeAction generator, CubeAction leftCoset)
                 {
@@ -244,13 +264,13 @@ namespace GroupTheory_RubiksCube
                     var newSubgroupGenerators = new HashSet<CubeAction>();
                     foreach (var generator in Generators)
                     {
+                        bool isNewGenerator = generator.Equals(newGenerator);
                         foreach (var state in OrbitToCoset.Keys)
                         {
                             var leftCoset = OrbitToCoset[state];
                             Utils.DebugAssert(leftCoset != null);
 
-                            if (!generator.Equals(newGenerator)
-                                && !newStates.Contains(state))
+                            if (!isNewGenerator && !newStates.Contains(state))
                             {
                                 // Old generator, old coset state
                                 continue;
@@ -262,7 +282,7 @@ namespace GroupTheory_RubiksCube
                                 Utils.DebugAssert(ToStablize.IsStablizedBy(subgroupGenerator));
                                 newSubgroupGenerators.Add(subgroupGenerator);
 
-                                /* No need to print because we don't know the whether generator is redundant here. */
+                                /* No need to print because we don't know whether the generator is redundant here. */
                             }
                         }
                     }
@@ -270,7 +290,42 @@ namespace GroupTheory_RubiksCube
                     return newSubgroupGenerators;
                 }
 
-                // TODO comments https://www.jaapsch.net/puzzles/schreier.htm
+                /// <summary>
+                /// Stablizer chain algorithm templated from https://www.jaapsch.net/puzzles/schreier.htm.
+                ///
+                /// __Basic stablizer chain algorithm__
+                ///
+                /// Each GStep in the stablizer chain corresponds to gradually more blocks were rotated to
+                /// the ideal cube position. Since the next GStep stablizes more blocks, it's the subgroup
+                /// of the previous GStep.
+                ///
+                /// To obtain the next GStep, we obtain its generators. Subgroup generators can be obtained
+                /// by Schreier subgroup lemma. It needs the set of cosets, i.e. coset representatives, and
+                /// the parent group generators.
+                ///
+                /// Coset representatives can be obtained by repeating permutation of parent group generators.
+                /// We know coset representatives are 1-on-1 mapping to block states we are trying to stablize.
+                /// So we can find whether coset representatives are equal, or whether we walked all of them.
+                ///
+                /// So, giving parent group generators, we can obtain subgroup generators. Recursively, we
+                /// walk along the stablizer chain of GSteps, until we solved all blocks.
+                ///
+                /// __Incremental stablizer chain algorithm__
+                ///
+                /// The problem is, the count of generators grow exponentially along the stablizer chain.
+                /// We want to know whether a generator is not necessary, i.e. this generator and all descendants
+                /// generators discovered by it, won't help us find any new cosets.
+                ///
+                /// The cosets at each GStep stablizer chain are the final results we want. Because given a cube
+                /// state, we use 1-on-1 mapping to know its coset representative, We use the reverse of the coset
+                /// representative to rotate the cube to ideal position. We do it along the stablizer chain, we
+                /// then solve the cube.
+                ///
+                /// That's why, if a generator discovers no new coset, the generator is not necessary. We can then
+                /// rewrite the algorithm in the new way, to incrementally add generators one by one. If a generator
+                /// is found not necessary, we then discard it, so that it won't further exponentially increase our
+                /// computation overhead.
+                /// </summary>
                 public int AddGeneratorIncrementally(CubeAction newGenerator)
                 {
                     if (null == Generators)
@@ -298,6 +353,16 @@ namespace GroupTheory_RubiksCube
 
                         var newSubgroupGenerators = ObtainGeneratorsOfStablizerSubgroupIncrementally(
                                                         newGenerator, newStates);
+
+                        if (Utils.PrintProgress)
+                        {
+                            Console.WriteLine(
+                              $"{new string(' ', Stablized.Indexes.Count)}" +
+                              $"{Stablized.Indexes.Count} - G:{newGenerator.Count()} " +
+                              $"NG:{newSubgroupGenerators.Count} RJ:{RejectedGenerators.Count} " +
+                              $"GC:{Generators.Count} CC:{OrbitToCoset.Count}");
+                        }
+
                         if (Next != null)
                         {
                             foreach (var subgroupGenerator in newSubgroupGenerators)
@@ -497,10 +562,3 @@ namespace GroupTheory_RubiksCube
         }
     }
 }
-
-// TODO if we rotated from a coset representative, we should reuse the middle cubestate
-// TODO it's not because the deeper in stablizier chain we have more combinations, but because we have longer generators, which cost significantly more time
-// TODO a lot of generators share common parts, can we index them and cache?
-
-// TODO I observed some generators are highly biased, i.e. it only uses certain cube operations, rather than mixing them up balancedly.
-//      Can we generate generators layer by layer in the first a few layers, so that they are not so imbalanced?
