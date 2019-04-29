@@ -102,41 +102,44 @@ namespace GroupTheory_RubiksCube
             }
         }
 
-        // Return Tuple<start_index, duplicate_length>
+        // Return Tuple<start_index, duplicate_length, T>
         public static IEnumerable<Tuple<int, int, T>> PackDuplicates<T>(IEnumerable<T> list)
         {
-            int idx = 0;
-            T lastOp = default(T);
-            int duplicateCount = 0;
-
-            foreach (var op in list)
+            if (list.Count() > 0)
             {
-                if (idx > 0)
+                int idx = 0;
+                T lastOp = default(T);
+                int duplicateCount = 0;
+
+                foreach (var op in list)
                 {
-                    if (op.Equals(lastOp))
+                    if (idx > 0)
                     {
-                        duplicateCount++;
+                        if (op.Equals(lastOp))
+                        {
+                            duplicateCount++;
+                        }
+                        else
+                        {
+                            DebugAssert(idx >= duplicateCount);
+                            yield return new Tuple<int, int, T>(
+                                idx - duplicateCount, duplicateCount, lastOp);
+
+                            duplicateCount = 1;
+                        }
                     }
                     else
                     {
-                        DebugAssert(idx >= duplicateCount);
-                        yield return new Tuple<int, int, T>(
-                            idx - duplicateCount, duplicateCount, lastOp);
-
                         duplicateCount = 1;
                     }
-                }
-                else
-                {
-                    duplicateCount = 1;
+
+                    lastOp = op;
+                    idx++;
                 }
 
-                lastOp = op;
-                idx++;
+                DebugAssert(idx >= duplicateCount);
+                yield return new Tuple<int, int, T>(idx - duplicateCount, duplicateCount, lastOp);
             }
-
-            DebugAssert(idx >= duplicateCount);
-            yield return new Tuple<int, int, T>(idx - duplicateCount, duplicateCount, lastOp);
         }
 
         public static bool ShouldVerify()

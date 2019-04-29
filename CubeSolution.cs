@@ -41,12 +41,15 @@ namespace GroupTheory_RubiksCube
                     generator.Act(newState.State);
 
                     // To verify generators truely stablizes Stablized BlockSet
-                    foreach (var stablePos in Stablized.Indexes)
+                    if (Utils.ShouldVerify())
                     {
-                        if (!newState.State.Blocks[stablePos]
-                            .Equals(startState.State.Blocks[stablePos]))
+                        foreach (var stablePos in Stablized.Indexes)
                         {
-                            throw new ArgumentException();
+                            if (!newState.State.Blocks[stablePos]
+                                .Equals(startState.State.Blocks[stablePos]))
+                            {
+                                throw new ArgumentException();
+                            }
                         }
                     }
 
@@ -474,6 +477,9 @@ namespace GroupTheory_RubiksCube
                 return ret;
             }
 
+
+            // We may try out the generated CubeActions on https://alg.cubing.net.
+            // The CubeAction.ToString() results can be directly executed on it.
             public void CalculateSolvingMap()
             {
                 if (StablizerChain.Count <= 1)
@@ -530,6 +536,15 @@ namespace GroupTheory_RubiksCube
                 foreach (var g in initGenerators)
                 {
                     gSteps[0].AddGeneratorIncrementally(g);
+                }
+
+                //
+                // Clear the RejectedGenerators, this is to relieve memory pressure
+                //
+
+                foreach (var gStep in gSteps)
+                {
+                    gStep.RejectedGenerators.Clear();
                 }
 
                 //

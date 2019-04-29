@@ -219,19 +219,107 @@ namespace GroupTheory_RubiksCube
             // It can be ~3 seconds for long CubeActions, e.g. Ops.Count ~60K
             private static void SimplifyNoops(List<CubeOp.Type> newOps)
             {
+                if (newOps.Count <= 0)
+                {
+                    return;
+                }
+
+                //
+                // In first round, we expect many duplicates to be removed in one
+                // run.
+                //
+                // In following rounds, as observed in testing, we may reveal more
+                // duplicates after each round of removal. It may repeat many times.
+                //
+
+                var newOpsInOperation = new LinkedList<CubeOp.Type>(newOps);
                 while (true)
                 {
-                    var duplicateRet = Utils.PackDuplicates(newOps)
-                                        .Where(t => t.Item2 >= CubeState.TurnAround)
-                                        .FirstOrDefault();
-                    if (null == duplicateRet)
+                    var duplicateList = new List<Tuple<int, int, CubeOp.Type>>(
+                                                Utils.PackDuplicates(newOpsInOperation)
+                                                .Where(t => t.Item2 >= CubeState.TurnAround));
+
+                    if (duplicateList.Count <= 0)
                     {
                         break;
                     }
 
-                    Utils.DebugAssert(duplicateRet.Item2 >= CubeState.TurnAround);
-                    newOps.RemoveRange(duplicateRet.Item1, CubeState.TurnAround);
+                    int deleteOffset = 0;
+                    var node = newOpsInOperation.First;
+                    var idx = 0;
+
+                    foreach (var dup in duplicateList)
+                    {
+                        int startIdx = dup.Item1 - deleteOffset;
+                        int length = dup.Item2;
+                        int lengthToDelete = (length / CubeState.TurnAround) * CubeState.TurnAround;
+
+                        while (idx < startIdx)
+                        {
+                            node = node.Next;
+                            idx++;
+                        }
+
+                        for (int i = 0; i < lengthToDelete; i++)
+                        {
+                            var next = node.Next;
+                            newOpsInOperation.Remove(node);
+                            node = next;
+                        }
+
+                        deleteOffset += lengthToDelete;
+                    }
+
+                    if (duplicateList.Count > 1)
+                    {
+                        continue;
+                    }
+
+                    //
+                    // To speed up a special case frequently observed: Before we removed,
+                    // we have only 1 4-length duplicate. After removal, another 1, and only
+                    // 1 4-length duplicate showed up. This can repeat incredibly many times,
+                    // and drag down for ~10+ seconds for a ~1700K long CubeAction.
+                    //
+
+                    int foundCount = 0;  // 1300+ last time observed
+                    while (true)
+                    {
+                        // Back to duplicate chain start
+                        while (node.Previous != null && node.Previous.Value == node.Value)
+                        {
+                            node = node.Previous;
+                            idx--;
+                        }
+
+                        int duplicateCount = 1;
+                        var probingNode = node;
+
+                        // Count how many duplicates we have
+                        while (probingNode.Next != null && probingNode.Next.Value == probingNode.Value)
+                        {
+                            probingNode = probingNode.Next;
+                            duplicateCount++;
+                        }
+
+                        if (duplicateCount % CubeState.TurnAround != 0)
+                        {
+                            break;
+                        }
+
+                        for (int i = 0; i < duplicateCount; i++)
+                        {
+                            var next = node.Next;
+                            newOpsInOperation.Remove(node);
+                            node = next;
+                        }
+
+                        foundCount++;
+                    }
                 }
+
+                newOps.Clear();
+                newOps.AddRange(newOpsInOperation);
             }
 
             private static void LazyInitActionShrink()
@@ -337,63 +425,71 @@ namespace GroupTheory_RubiksCube
                 Console.Write($"SimplifyActionShrink: Len={newOps.Count} ");
                 Console.Out.Flush();
 
-                int foundCount = 0;
-                // We iterate in reverse order because CubeAction.Ops are applied in reverse order
-                for (int startIdx = newOps.Count - 1; startIdx >= 0; startIdx--)  // inclusive
+                while (true)
                 {
-                    CubeState probingState = null;
-                    for (int endIdx = startIdx - 1; endIdx >= 0; endIdx--)  // inclusive
+                    int foundCount = 0;
+                    // We iterate in reverse order because CubeAction.Ops are applied in reverse order
+                    for (int startIdx = newOps.Count - 1; startIdx >= 0; startIdx--)  // inclusive
                     {
-                        int opLength = startIdx - endIdx + 1;
-
-                        if (null == probingState)
+                        CubeState probingState = null;
+                        for (int endIdx = startIdx - 1; endIdx >= 0; endIdx--)  // inclusive
                         {
-                            probingState = new CubeState();
+                            int opLength = startIdx - endIdx + 1;
 
-                            var action = new CubeAction();
-                            action.Ops = newOps.GetRange(endIdx, opLength);
-                            action.ActOps(probingState);
+                            if (null == probingState)
+                            {
+                                probingState = new CubeState();
+
+                                var action = new CubeAction();
+                                action.Ops = newOps.GetRange(endIdx, opLength);
+                                action.ActOps(probingState);
+                            }
+                            else
+                            {
+                                // Since we iterate in reverse order, we reuse previous calculation
+                                CubeOp.Op(probingState, newOps[endIdx]);
+                            }
+
+                            if (!ActionShrinkDict.ContainsKey(probingState))
+                            {
+                                continue;
+                            }
+
+                            var shortAction = ActionShrinkDict[probingState];
+                            if (shortAction.Ops.Count >= opLength)
+                            {
+                                continue;
+                            }
+
+                            //
+                            // We found a match. Replace it with a shorter op list.
+                            //
+                            // Though we could wait for a longer match of op list,
+                            // or we scan the entire list again after replacement,
+                            // by observation, the current greedy strategy below
+                            // yields good enough result and better performance.
+                            //
+
+                            newOps.RemoveRange(endIdx, opLength);
+                            newOps.InsertRange(endIdx, shortAction.Ops);
+
+                            startIdx = endIdx + shortAction.Ops.Count - 1;
+                            if (startIdx <= endIdx)
+                            {
+                                endIdx = startIdx - 1;
+                            }
+
+                            foundCount++;
+                            Console.Write(
+                                $"{foundCount}:[{opLength}=>{shortAction.Ops.Count}," +
+                                $"Len:{newOps.Count},Action:[{shortAction}]] ");
+                            Console.Out.Flush();
                         }
-                        else
-                        {
-                            // Since we iterate in reverse order, we reuse previous calculation
-                            CubeOp.Op(probingState, newOps[endIdx]);
-                        }
+                    }
 
-                        if (!ActionShrinkDict.ContainsKey(probingState))
-                        {
-                            continue;
-                        }
-
-                        var shortAction = ActionShrinkDict[probingState];
-                        if (shortAction.Ops.Count >= opLength)
-                        {
-                            continue;
-                        }
-
-                        //
-                        // We found a match. Replace it with a shorter op list.
-                        //
-                        // Though we could wait for a longer match of op list,
-                        // or we scan the entire list again after replacement,
-                        // by observation, the current greedy strategy below
-                        // yields good enough result and better performance.
-                        //
-
-                        newOps.RemoveRange(endIdx, opLength);
-                        newOps.InsertRange(endIdx, shortAction.Ops);
-
-                        startIdx = endIdx + shortAction.Ops.Count - 1;
-                        if (startIdx <= endIdx)
-                        {
-                            endIdx = startIdx - 1;
-                        }
-
-                        foundCount++;
-                        Console.Write(
-                            $"{foundCount}:[{opLength}=>{shortAction.Ops.Count}," +
-                            $"Len:{newOps.Count},Action:[{shortAction}]] ");
-                        Console.Out.Flush();
+                    if (foundCount <= 0)
+                    {
+                        break;
                     }
                 }
 
@@ -415,16 +511,11 @@ namespace GroupTheory_RubiksCube
                 {
                     newAction.AccelerationMap = new ActionMap(AccelerationMap);
                 }
-
-                if (newAction.Ops.Count > OpCountForAccelerationMap)
-                {
-                    Utils.DebugAssert(newAction.AccelerationMap != null);
-                }
-
                 newAction.VerifySetupAccelerationMap();
+
                 if (Utils.ShouldVerify())
                 {
-                    Utils.DebugAssert(newAction.Equals(this));
+                    Utils.DebugAssert(newAction.EqualOps(this));
                 }
                 return newAction;
             }
@@ -526,43 +617,14 @@ namespace GroupTheory_RubiksCube
                 var outStr = new StringBuilder();
 
                 var opList = Enumerable.Reverse(Ops);
-                CubeOp.Type? lastOp = null;
-                int duplicateCount = 0;
-
-                foreach (var op in opList)
+                foreach (var dup in Utils.PackDuplicates(opList))
                 {
-                    if (!lastOp.HasValue)
-                    {
-                        lastOp = op;
-                        duplicateCount++;
-
-                        continue;
-                    }
-
-                    if (op == lastOp)
-                    {
-                        duplicateCount++;
-                    }
-                    else
-                    {
-                        outStr.Append(
-                            $"{CubeOp.ToString(lastOp.Value)}" +
-                            (duplicateCount > 1 ? $"{duplicateCount}" : "") +
-                            " ");
-
-                        duplicateCount = 1;
-                        lastOp = op;
-                    }
-                }
-
-                if (opList.Count() != 0)
-                {
-                    Utils.DebugAssert(lastOp.HasValue);
-                    Utils.DebugAssert(duplicateCount >= 1);
+                    var op = dup.Item3;
+                    var count = dup.Item2;
 
                     outStr.Append(
-                        $"{CubeOp.ToString(lastOp.Value)}" +
-                        (duplicateCount > 1 ? $"{duplicateCount}" : ""));
+                        $"{CubeOp.ToString(op)}" +
+                        (count > 1 ? $"{count} " : " "));
                 }
 
                 return outStr.ToString();
