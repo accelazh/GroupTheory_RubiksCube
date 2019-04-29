@@ -33,11 +33,29 @@ namespace GroupTheory_RubiksCube
                                             * (CubeState.Level + 1)
                                             * (CubeState.Level + 1)];
 
+            public static readonly ActionMap Identity;
+
+            static ActionMap()
+            {
+                Identity = new ActionMap();
+
+                for (int i = 0; i < Identity.ColorMap.Length; i++)
+                {
+                    var colorBlock = IndexToColorBlock(i);
+                    if (CubeState.Block.IsValidPosition(colorBlock.Item1))
+                    {
+                        Identity.ColorMap[i] = i;
+                    }
+                }
+
+                Utils.DebugAssert(Identity.IsIdentity());
+                Identity.Validate();
+            }
+
             private ActionMap()
             {
                 Init();
             }
-
             public ActionMap(CubeState original, CubeState current)
             {
                 FromTransform(original, current);

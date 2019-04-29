@@ -15,6 +15,8 @@ namespace GroupTheory_RubiksCube
             /// </summary>
             public class GStep
             {
+                public const int RejectedGeneratorBufferSize = 2000;
+
                 public BlockSet Stablized;
 
                 public HashSet<CubeAction> Generators;
@@ -56,7 +58,7 @@ namespace GroupTheory_RubiksCube
                         Utils.DebugAssert(startCoset != null);
 
                         var newCoset = generator.Mul(startCoset);
-                        newCoset = newCoset.Simplify(CubeAction.SimplifyLevel.Level1);
+                        newCoset = newCoset.Simplify(CubeAction.SimplifyLevel.Level0);
                         OrbitToCoset.Add(newState, newCoset);
                     }
 
@@ -375,6 +377,13 @@ namespace GroupTheory_RubiksCube
                     if (foundStateCount <= 0)
                     {
                         Generators.Remove(newGenerator);
+
+                        // Protect from Out-of-Memory failure. And to refresh old rejections
+                        if (RejectedGenerators.Count > RejectedGeneratorBufferSize)
+                        {
+                            RejectedGenerators.Clear();
+                        }
+
                         RejectedGenerators.Add(newGenerator);
                     }
                     else
@@ -384,7 +393,7 @@ namespace GroupTheory_RubiksCube
                         // generators, and in many cases they don't reduce generator length at all.
                         bool removeRet = Generators.Remove(newGenerator);
                         Utils.DebugAssert(removeRet);
-                        newGenerator = newGenerator.Simplify(CubeAction.SimplifyLevel.Level1);
+                        newGenerator = newGenerator.Simplify(CubeAction.SimplifyLevel.Level0);
                         Generators.Add(newGenerator);
 
                         Console.WriteLine(
@@ -521,6 +530,35 @@ namespace GroupTheory_RubiksCube
                 foreach (var g in initGenerators)
                 {
                     gSteps[0].AddGeneratorIncrementally(g);
+                }
+
+                //
+                // Simplify each generators. This could take time but is optional
+                //
+
+                foreach (var gStep in gSteps)
+                {
+                    Console.WriteLine(
+                        $"Simplifying GStep: Stablized={gStep.Stablized.Indexes.Count} " +
+                        $"Generators={gStep.Generators.Count} Cosets={gStep.OrbitToCoset.Count} ...");
+
+                    var oldGenerators = new HashSet<CubeAction>(gStep.Generators);
+                    gStep.Generators.Clear();
+
+                    foreach (var g in oldGenerators)
+                    {
+                        var gSimplified = g.Simplify(CubeAction.SimplifyLevel.Level1);
+                        gStep.Generators.Add(gSimplified);
+                    }
+
+                    var exsitingOrbit = new List<BlockSet>(gStep.OrbitToCoset.Keys);
+                    foreach (var bs in exsitingOrbit)
+                    {
+                        var coset = gStep.OrbitToCoset[bs];
+                        var cosetSimplified = coset.Simplify(CubeAction.SimplifyLevel.Level1);
+
+                        gStep.OrbitToCoset[bs] = cosetSimplified;
+                    }
                 }
             }
 

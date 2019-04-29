@@ -31,7 +31,8 @@ namespace GroupTheory_RubiksCube
 
             public CubeAction()
             {
-                // Do nothing
+                AccelerationMap = ActionMap.Identity;
+                this.VerifyAccelerationMap();
             }
 
             public CubeAction(CubeAction other)
@@ -42,10 +43,15 @@ namespace GroupTheory_RubiksCube
                 this.VerifySetupAccelerationMap();
             }
 
-            public CubeAction(IEnumerable<CubeOp.Type> ops)
+            public CubeAction(IEnumerable<CubeOp.Type> ops) : this (ops, true)
+            {
+                // Do nothing
+            }
+
+            private CubeAction(IEnumerable<CubeOp.Type> ops, bool buildAccelerationMap)
             {
                 this.Ops = new List<CubeOp.Type>(ops);
-                if (this.Ops.Count > OpCountForAccelerationMap)
+                if (buildAccelerationMap && this.Ops.Count > OpCountForAccelerationMap)
                 {
                     this.LazyBuildAccelerationMap();
                 }
@@ -174,7 +180,7 @@ namespace GroupTheory_RubiksCube
                     reverseOps.AddRange(CubeOp.Reverse(opType));
                 }
 
-                var ret = new CubeAction(reverseOps);
+                var ret = new CubeAction(reverseOps, false);
                 if (AccelerationMap != null)
                 {
                     ret.AccelerationMap = AccelerationMap.Reverse();
@@ -199,19 +205,18 @@ namespace GroupTheory_RubiksCube
                 var mulOps = new List<CubeOp.Type>(Ops);
                 mulOps.AddRange(other.Ops);
 
-                var ret = new CubeAction(mulOps);
-                var retSimplified = ret.Simplify(SimplifyLevel.Level0);
-
+                var ret = new CubeAction(mulOps, false);
                 if (AccelerationMap != null && other.AccelerationMap != null)
                 {
-                    retSimplified.AccelerationMap = AccelerationMap.Mul(other.AccelerationMap);
-                    retSimplified.VerifyAccelerationMap();
+                    ret.AccelerationMap = AccelerationMap.Mul(other.AccelerationMap);
+                    ret.VerifyAccelerationMap();
                 }
 
-                retSimplified.VerifySetupAccelerationMap();
-                return retSimplified;
+                ret.VerifySetupAccelerationMap();
+                return ret;
             }
 
+            // It can be ~3 seconds for long CubeActions, e.g. Ops.Count ~60K
             private static void SimplifyNoops(List<CubeOp.Type> newOps)
             {
                 while (true)
@@ -405,7 +410,7 @@ namespace GroupTheory_RubiksCube
                     SimplifyActionShrink(newOps);
                 }
 
-                var newAction = new CubeAction(newOps);
+                var newAction = new CubeAction(newOps, false);
                 if (AccelerationMap != null)
                 {
                     newAction.AccelerationMap = new ActionMap(AccelerationMap);
@@ -469,6 +474,9 @@ namespace GroupTheory_RubiksCube
                     return false;
                 }
 
+                VerifySetupAccelerationMap();
+                obj.VerifySetupAccelerationMap();
+
                 bool? opsEqual = null;
                 bool? mapEqual = null;
 
@@ -477,8 +485,6 @@ namespace GroupTheory_RubiksCube
                     opsEqual = EqualOps(obj);
                 }
 
-                VerifySetupAccelerationMap();
-                obj.VerifySetupAccelerationMap();
                 if (AccelerationMap != null && obj.AccelerationMap != null)
                 {
                     mapEqual = AccelerationMap.Equals(obj.AccelerationMap);

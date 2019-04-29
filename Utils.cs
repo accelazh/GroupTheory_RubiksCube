@@ -10,8 +10,10 @@ namespace GroupTheory_RubiksCube
     {
         public static readonly Random GlobalRandom = new Random();
 
-        public const int SkipVerifyBase = 1000;
-        public const double SkipVerifyRatio = 0.99;
+        public const int SkipVerifyBase = 10000000;
+        // As tested, when generators become very long, even tiny probability
+        // of Utils.ShouldVerify can significantly drag down computation speed
+        public const double SkipVerifyRatio = 0.999999;
 
         public const bool PrintProgress = false;
 
