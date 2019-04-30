@@ -646,3 +646,6 @@ namespace GroupTheory_RubiksCube
         }
     }
 }
+
+// TODO Jerrum's Filter. And we need to rearrange the order according stablizer chain, before we obtain (i, j).
+// http://www.m8j.net/data/List/Files-118/Documentation.pdf, https://mathstrek.blog/2018/06/12/schreier-sims-algorithm/, https://www.jmilne.org/math/CourseNotes/GT310.pdf
