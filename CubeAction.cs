@@ -93,8 +93,7 @@ namespace GroupTheory_RubiksCube
                     return;
                 }
 
-                if (AccelerationMap != null
-                    || Ops.Count >= OpCountForAccelerationMap)
+                if (Ops.Count >= OpCountForAccelerationMap)
                 {
                     bool shouldVerify = Utils.ShouldVerify();
 
@@ -113,6 +112,8 @@ namespace GroupTheory_RubiksCube
                 }
                 else
                 {
+                    // It's possible AccelerationMap != null. But we choose
+                    // not to use it, because it would be slower.
                     ActOps(cubeState);
                 }
             }

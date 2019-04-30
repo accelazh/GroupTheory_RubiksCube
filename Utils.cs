@@ -15,8 +15,6 @@ namespace GroupTheory_RubiksCube
         // of Utils.ShouldVerify can significantly drag down computation speed
         public const double SkipVerifyRatio = 0.999999;
 
-        public const bool PrintProgress = false;
-
         private static readonly DateTime Jan1st1970 = new DateTime(1970, 1, 1, 0, 0, 0, DateTimeKind.Utc);
 
         public static int GetHashCode<T>(IEnumerable<T> array)

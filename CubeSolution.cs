@@ -15,6 +15,21 @@ namespace GroupTheory_RubiksCube
             /// </summary>
             public class GStep
             {
+                public class ProgressInfo
+                {
+                    public int StablizedCount;
+                    public int TotalWork;
+                    public int CompletedWork;
+
+                    public ProgressInfo(int stablizedCount, int totalWork)
+                    {
+                        this.StablizedCount = stablizedCount;
+                        this.TotalWork = totalWork;
+                        this.CompletedWork = 0;
+                    }
+                }
+
+                public const bool PrintProgress = true;
                 public const int RejectedGeneratorBufferSize = 2000;
 
                 public BlockSet Stablized;
@@ -188,6 +203,8 @@ namespace GroupTheory_RubiksCube
                 /// orbit of the blocks we are observing, is 1-on-1 mapping to the set of *right* cosets
                 /// divided by stablizer subgroup of the blocks we are observing.
                 ///
+                /// See: https://www.jmilne.org/math/CourseNotes/GT310.pdf
+                ///
                 /// In this way, by traversal through each possible state of the the blocks we are observing,
                 /// we can discover each of the cosets of the stablizer subgroup, which will later be input
                 /// into Schreier subgroup lemma to obtain the stablizer subgroup's generators.
@@ -331,7 +348,7 @@ namespace GroupTheory_RubiksCube
                 /// is found not necessary, we then discard it, so that it won't further exponentially increase our
                 /// computation overhead.
                 /// </summary>
-                public int AddGeneratorIncrementally(CubeAction newGenerator)
+                public int AddGeneratorIncrementally(CubeAction newGenerator, List<ProgressInfo> progressInfoList)
                 {
                     if (null == Generators)
                     {
@@ -351,6 +368,7 @@ namespace GroupTheory_RubiksCube
                         return 0;
                     }
 
+                    ProgressInfo progressInfo = null;
                     int foundStateCount = 0;
                     {
                         var newStates = ExploreOrbitToCosetIncrementally(newGenerator);
@@ -359,20 +377,23 @@ namespace GroupTheory_RubiksCube
                         var newSubgroupGenerators = ObtainGeneratorsOfStablizerSubgroupIncrementally(
                                                         newGenerator, newStates);
 
-                        if (Utils.PrintProgress)
+                        if (PrintProgress)
                         {
-                            Console.WriteLine(
-                              $"{new string(' ', Stablized.Indexes.Count)}" +
-                              $"{Stablized.Indexes.Count} - G:{newGenerator.Count()} " +
-                              $"NG:{newSubgroupGenerators.Count} RJ:{RejectedGenerators.Count} " +
-                              $"GC:{Generators.Count} CC:{OrbitToCoset.Count}");
+                            foreach (var p in progressInfoList)
+                            {
+                                Console.Write($"{p.StablizedCount}:{p.CompletedWork}/{p.TotalWork} ");
+                            }
+                            Console.WriteLine();
                         }
 
                         if (Next != null)
                         {
+                            progressInfo = new ProgressInfo(Stablized.Indexes.Count, newSubgroupGenerators.Count);
+                            progressInfoList.Add(progressInfo);
                             foreach (var subgroupGenerator in newSubgroupGenerators)
                             {
-                                foundStateCount += Next.AddGeneratorIncrementally(subgroupGenerator);
+                                foundStateCount += Next.AddGeneratorIncrementally(subgroupGenerator, progressInfoList);
+                                progressInfo.CompletedWork++;
                             }
                         }
                     }
@@ -408,6 +429,11 @@ namespace GroupTheory_RubiksCube
 
                         // Since we have new generators added, we give previously rejected a new chance
                         RejectedGenerators.Clear();
+                    }
+
+                    if (progressInfo != null)
+                    {
+                        progressInfoList.RemoveAt(progressInfoList.Count - 1);
                     }
                     return foundStateCount;
                 }
@@ -517,25 +543,29 @@ namespace GroupTheory_RubiksCube
 
                 var initGenerators = new List<CubeAction>() {
                      new CubeAction(new List<CubeOp.Type>() { CubeOp.Type.Op1F }),
-                     new CubeAction(new List<CubeOp.Type>() { CubeOp.Type.Op1U }),
-                     new CubeAction(new List<CubeOp.Type>() { CubeOp.Type.Op1L }),
-
                      new CubeAction(new List<CubeOp.Type>() { CubeOp.Type.Op2F }),
-                     new CubeAction(new List<CubeOp.Type>() { CubeOp.Type.Op2U }),
-                     new CubeAction(new List<CubeOp.Type>() { CubeOp.Type.Op2L }),
-
                      new CubeAction(new List<CubeOp.Type>() { CubeOp.Type.Op3F }),
-                     new CubeAction(new List<CubeOp.Type>() { CubeOp.Type.Op3U }),
-                     new CubeAction(new List<CubeOp.Type>() { CubeOp.Type.Op3L }),
-
                      new CubeAction(new List<CubeOp.Type>() { CubeOp.Type.Op4F }),
+
+                     new CubeAction(new List<CubeOp.Type>() { CubeOp.Type.Op1U }),
+                     new CubeAction(new List<CubeOp.Type>() { CubeOp.Type.Op2U }),
+                     new CubeAction(new List<CubeOp.Type>() { CubeOp.Type.Op3U }),
                      new CubeAction(new List<CubeOp.Type>() { CubeOp.Type.Op4U }),
+
+                     new CubeAction(new List<CubeOp.Type>() { CubeOp.Type.Op1L }),
+                     new CubeAction(new List<CubeOp.Type>() { CubeOp.Type.Op2L }),
+                     new CubeAction(new List<CubeOp.Type>() { CubeOp.Type.Op3L }),
                      new CubeAction(new List<CubeOp.Type>() { CubeOp.Type.Op4L }),
                 };
 
+                var progressInfoList = new List<GStep.ProgressInfo>();
+                var progressInfo = new GStep.ProgressInfo(0, initGenerators.Count);
+                progressInfoList.Add(progressInfo);
+
                 foreach (var g in initGenerators)
                 {
-                    gSteps[0].AddGeneratorIncrementally(g);
+                    gSteps[0].AddGeneratorIncrementally(g, progressInfoList);
+                    progressInfo.CompletedWork++;
                 }
 
                 //
