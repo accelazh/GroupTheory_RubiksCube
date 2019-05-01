@@ -574,14 +574,14 @@ namespace GroupTheory_RubiksCube
                     foreach (var bs in gStep.OrbitToCoset.Keys)
                     {
                         count++;
+                        var coset = gStep.OrbitToCoset[bs];
 
                         Console.WriteLine(
                             $"Stablized[{gStep.Stablized.Indexes.Count}] " +
-                            $"Simplifying Coset: Level1: " +
-                            $"Cosets={count}/{gStep.OrbitToCoset.Count}" +
-                            $"Generators={gStep.Generators.Count} ");
+                            $"Simplifying Coset: Level1: Size={coset.Count()} " +
+                            $"Cosets={count}/{gStep.OrbitToCoset.Count} " +
+                            $"Generators={gStep.Generators.Count}");
 
-                        var coset = gStep.OrbitToCoset[bs];
                         coset.Simplify(CubeAction.SimplifyLevel.Level1);
                     }
                 }
@@ -592,14 +592,14 @@ namespace GroupTheory_RubiksCube
                     foreach (var bs in gStep.OrbitToCoset.Keys)
                     {
                         count++;
+                        var coset = gStep.OrbitToCoset[bs];
 
                         Console.WriteLine(
                             $"Stablized[{gStep.Stablized.Indexes.Count}] " +
-                            $"Simplifying Coset: Level2: " +
-                            $"Cosets={count}/{gStep.OrbitToCoset.Count}" +
-                            $"Generators={gStep.Generators.Count} ");
+                            $"Simplifying Coset: Level2: Size={coset.Count()} " +
+                            $"Cosets={count}/{gStep.OrbitToCoset.Count} " +
+                            $"Generators={gStep.Generators.Count}");
 
-                        var coset = gStep.OrbitToCoset[bs];
                         coset.Simplify(CubeAction.SimplifyLevel.Level2);
                     }
                 }
