@@ -230,9 +230,8 @@ namespace GroupTheory_RubiksCube
                 // As observed, some newOps may keep loop deleting for very long time
                 // but never finish, each loop only deletes few duplicates. We add a hard
                 // limit to it.
-                const int MAX_MINOR_LOOP_COUNT = 10;
-                const int MINOR_LOOP_THRESHOLD = 4;
-                int minorLoopCount = 0;
+                const int MAX_LOOP_COUNT = 2;
+                int loopCount = 0;
 
                 //
                 // In first round, we expect many duplicates to be removed in one
@@ -243,7 +242,7 @@ namespace GroupTheory_RubiksCube
                 //
 
                 var newOpsInOperation = new LinkedList<CubeOp.Type>(newOps);
-                while (minorLoopCount < MAX_MINOR_LOOP_COUNT)
+                while (loopCount < MAX_LOOP_COUNT)
                 {
                     var duplicateList = new List<Tuple<int, int, CubeOp.Type>>(
                                                 Utils.PackDuplicates(newOpsInOperation)
@@ -329,10 +328,7 @@ namespace GroupTheory_RubiksCube
                         totalDeleteCount += foundCount;
                     }
 
-                    if (totalDeleteCount <= MINOR_LOOP_THRESHOLD)
-                    {
-                        minorLoopCount++;
-                    }
+                    loopCount++;
                 }
 
                 newOps.Clear();

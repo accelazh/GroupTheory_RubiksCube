@@ -34,6 +34,7 @@ namespace GroupTheory_RubiksCube
                 public BlockSet Stablized;
 
                 public HashSet<CubeAction> Generators;
+                public HashSet<CubeAction> RejectedGenerators;
                 public SimsFilter GeneratorFilter;
 
                 public BlockSet ToStablize;
@@ -45,7 +46,7 @@ namespace GroupTheory_RubiksCube
                 {
                     Stablized = new BlockSet(stablized);
                     ToStablize = new BlockSet(toStablize);
-                    GeneratorFilter = new SimsFilter(stablizerChain);
+                    GeneratorFilter = new SimsFilter(stablized, stablizerChain);
                 }
 
                 private BlockSet ExploreNewCoset(BlockSet startState, CubeAction generator)
@@ -355,6 +356,30 @@ namespace GroupTheory_RubiksCube
                         Generators = new HashSet<CubeAction>();
                     }
 
+                    if (null == RejectedGenerators)
+                    {
+                        RejectedGenerators = new HashSet<CubeAction>();
+                    }
+                    if (RejectedGenerators.Contains(newGenerator))
+                    {
+                        return 0;
+                    }
+
+                    if (PrintProgress)
+                    {
+                        foreach (var p in progressInfoList)
+                        {
+                            Console.Write($"{p.StablizedCount}:{p.CompletedWork}/{p.TotalWork} ");
+                        }
+                        Console.WriteLine();
+
+                        Console.WriteLine(
+                          $"{new string(' ', Stablized.Indexes.Count)}" +
+                          $"{Stablized.Indexes.Count} - G:{newGenerator.Count()} " +
+                          $"FC:{GeneratorFilter.ModifyCount} GC:{Generators.Count} " +
+                          $"CC:{(OrbitToCoset != null ? OrbitToCoset.Count : 0)} RJ:{RejectedGenerators.Count}");
+                    }
+
                     var filteredGenerator = GeneratorFilter.FilterGeneratorIncrementally(newGenerator);
                     if (filteredGenerator != null)
                     {
@@ -362,6 +387,7 @@ namespace GroupTheory_RubiksCube
                     }
                     else
                     {
+                        RejectedGenerators.Add(newGenerator);
                         return 0;
                     }
 
@@ -380,21 +406,6 @@ namespace GroupTheory_RubiksCube
                         var newSubgroupGenerators = ObtainGeneratorsOfStablizerSubgroupIncrementally(
                                                         newGenerator, newStates);
 
-                        if (PrintProgress)
-                        {
-                            foreach (var p in progressInfoList)
-                            {
-                                Console.Write($"{p.StablizedCount}:{p.CompletedWork}/{p.TotalWork} ");
-                            }
-                            Console.WriteLine();
-
-                            Console.WriteLine(
-                              $"{new string(' ', Stablized.Indexes.Count)}" +
-                              $"{Stablized.Indexes.Count} - G:{newGenerator.Count()} " +
-                              $"NG:{newSubgroupGenerators.Count} FC:{GeneratorFilter.ModifyCount} " +
-                              $"GC:{Generators.Count} CC:{OrbitToCoset.Count}");
-                        }
-
                         if (Next != null)
                         {
                             progressInfo = new ProgressInfo(Stablized.Indexes.Count, newSubgroupGenerators.Count);
@@ -407,12 +418,13 @@ namespace GroupTheory_RubiksCube
                         }
                     }
 
-                    Console.WriteLine(
+                    Utils.DebugAssert(GeneratorFilter.AcceptedGeneratorCount == Generators.Count);
+                    /*Console.WriteLine(
                         $"Stablized[{Stablized.Indexes.Count}] " +
                         $"AddGeneratorIncrementally: Accepted new generator: " +
                         $"foundStateCount={foundStateCount} Generators={Generators.Count} " +
                         $"Cosets={OrbitToCoset.Count} FilterCount={GeneratorFilter.ModifyCount} " +
-                        $"newGenerator=[{newGenerator}]");
+                        $"newGenerator=[{newGenerator}]");*/ // TODO debug
 
                     if (progressInfo != null)
                     {

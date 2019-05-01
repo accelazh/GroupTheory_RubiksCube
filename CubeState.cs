@@ -790,7 +790,7 @@ namespace GroupTheory_RubiksCube
                 return Blocks.Where(b =>
                     (!position[(int)Axis.X].HasValue || position[(int)Axis.X] == b.Position[(int)Axis.X])
                     && (!position[(int)Axis.Y].HasValue || position[(int)Axis.Y] == b.Position[(int)Axis.Y])
-                    && (!position[(int)Axis.Z].HasValue || position[(int)Axis.Y] == b.Position[(int)Axis.Z]));
+                    && (!position[(int)Axis.Z].HasValue || position[(int)Axis.Z] == b.Position[(int)Axis.Z]));
             }
 
             public IEnumerable<Block> BlocksAtPositions(IEnumerable<int[]> positions)

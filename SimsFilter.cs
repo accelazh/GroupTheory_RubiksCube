@@ -22,23 +22,39 @@ namespace GroupTheory_RubiksCube
         public class SimsFilter
         {
             public List<int> StablizingOrder;
+            public int StablizedIdx;
+            public int GeneratorCountLimit;
 
             private CubeAction[,] ActionGrid = new CubeAction[
                 ActionMap.Identity.ColorMap.Length, ActionMap.Identity.ColorMap.Length];
 
             public int ModifyCount = 0;
+            public int AcceptedGeneratorCount = 0;
 
-            public SimsFilter(List<BlockSet> stablizerChain)
+            public SimsFilter(BlockSet stablized, List<BlockSet> stablizerChain)
             {
                 InitStablizingOrder(stablizerChain);
+                InitStablizedIdx(stablized);
+                IniitGeneratorCountLimit();
             }
 
             public CubeAction FilterGeneratorIncrementally(CubeAction newGenerator)
             {
+                if (AcceptedGeneratorCount >= GeneratorCountLimit)
+                {
+                    Utils.DebugAssert(AcceptedGeneratorCount == GeneratorCountLimit);
+                    return null;
+                }
+
                 var pair = GetActionPair(newGenerator);
                 if (pair.Item1 < 0)
                 {
                     return null;
+                }
+                if (pair.Item1 <= StablizedIdx)
+                {
+                    // This means the newGenerator didn't stablize the required cube blockss
+                    throw new ArgumentException();
                 }
 
                 var newGeneratorSimplified = newGenerator.Simplify(CubeAction.SimplifyLevel.Level0);
@@ -48,6 +64,8 @@ namespace GroupTheory_RubiksCube
                 if (null == existingGenerator)
                 {
                     ActionGrid[pair.Item1, pair.Item2] = newGenerator;
+                    AcceptedGeneratorCount++;
+
                     return newGenerator;
                 }
                 else
@@ -66,11 +84,6 @@ namespace GroupTheory_RubiksCube
                     ModifyCount++;
                     return FilterGeneratorIncrementally(modifiedGenerator);
                 }
-            }
-
-            public IEnumerable<CubeAction> Generators()
-            {
-                return ActionGrid.Cast<CubeAction>().Where(g => g != null);
             }
 
             private void InitStablizingOrder(List<BlockSet> stablizerChain)
@@ -102,6 +115,66 @@ namespace GroupTheory_RubiksCube
                 }
 
                 VerifyStablizingOrder();
+            }
+
+            private void InitStablizedIdx(BlockSet stablized)
+            {
+                StablizedIdx = -1;
+
+                var stablizedInOrder = new HashSet<int>();
+                foreach (var idx in stablized.Indexes)
+                {
+                    var block = stablized.State.Blocks[idx];
+                    var position = block.Position;
+
+                    foreach (CubeState.Axis axis in Enum.GetValues(typeof(CubeState.Axis)))
+                    {
+                        foreach (CubeState.Direction direction in Enum.GetValues(typeof(CubeState.Direction)))
+                        {
+                            var color = block.Colors[(int)axis, (int)direction];
+                            if (CubeState.Color.None == color)
+                            {
+                                continue;
+                            }
+
+                            int actionMapIndex = ActionMap.ColorBlockToIndex(position, axis, direction);
+                            int idxInStablizingOrder = StablizingOrder.IndexOf(actionMapIndex);
+                            Utils.DebugAssert(idxInStablizingOrder >= 0);
+
+                            Utils.DebugAssert(!stablizedInOrder.Contains(idxInStablizingOrder));
+                            stablizedInOrder.Add(idxInStablizingOrder);
+                        }
+                    }
+                }
+
+                if (stablizedInOrder.Count > 0)
+                {
+                    StablizedIdx = stablizedInOrder.Max();
+                }
+
+                //
+                // Verify StablizedIdx
+                //
+
+                for (int i = 0; i < StablizedIdx; i++)
+                {
+                    Utils.DebugAssert(stablizedInOrder.Contains(i));
+                }
+
+                if (stablizedInOrder.Count > 0)
+                {
+                    Utils.DebugAssert(stablizedInOrder.Max() == stablizedInOrder.Count - 1);
+                }
+                else
+                {
+                    StablizedIdx = -1;
+                }
+            }
+
+            private void IniitGeneratorCountLimit()
+            {
+                int n = StablizingOrder.Count - (StablizedIdx + 1);
+                this.GeneratorCountLimit = (n * (n - 1)) / 2;
             }
 
             private void VerifyStablizingOrder()
