@@ -30,22 +30,22 @@ namespace GroupTheory_RubiksCube
                 }
 
                 public const bool PrintProgress = true;
-                public const int RejectedGeneratorBufferSize = 2000;
 
                 public BlockSet Stablized;
 
                 public HashSet<CubeAction> Generators;
-                public HashSet<CubeAction> RejectedGenerators;
+                public SimsFilter GeneratorFilter;
 
                 public BlockSet ToStablize;
                 public Dictionary<BlockSet, CubeAction> OrbitToCoset;
 
                 public GStep Next;
 
-                public GStep(BlockSet stablized, BlockSet toStablize)
+                public GStep(BlockSet stablized, BlockSet toStablize, List<BlockSet> stablizerChain)
                 {
                     Stablized = new BlockSet(stablized);
                     ToStablize = new BlockSet(toStablize);
+                    GeneratorFilter = new SimsFilter(stablizerChain);
                 }
 
                 private BlockSet ExploreNewCoset(BlockSet startState, CubeAction generator)
@@ -354,17 +354,20 @@ namespace GroupTheory_RubiksCube
                     {
                         Generators = new HashSet<CubeAction>();
                     }
-                    if (null == RejectedGenerators)
+
+                    var filteredGenerator = GeneratorFilter.FilterGeneratorIncrementally(newGenerator);
+                    if (filteredGenerator != null)
                     {
-                        RejectedGenerators = new HashSet<CubeAction>();
+                        newGenerator = filteredGenerator;
+                    }
+                    else
+                    {
+                        return 0;
                     }
 
                     if (Generators.Contains(newGenerator))
                     {
-                        return 0;
-                    }
-                    if (RejectedGenerators.Contains(newGenerator))
-                    {
+                        Utils.DebugAssert(false);
                         return 0;
                     }
 
@@ -384,6 +387,12 @@ namespace GroupTheory_RubiksCube
                                 Console.Write($"{p.StablizedCount}:{p.CompletedWork}/{p.TotalWork} ");
                             }
                             Console.WriteLine();
+
+                            Console.WriteLine(
+                              $"{new string(' ', Stablized.Indexes.Count)}" +
+                              $"{Stablized.Indexes.Count} - G:{newGenerator.Count()} " +
+                              $"NG:{newSubgroupGenerators.Count} FC:{GeneratorFilter.ModifyCount} " +
+                              $"GC:{Generators.Count} CC:{OrbitToCoset.Count}");
                         }
 
                         if (Next != null)
@@ -398,38 +407,12 @@ namespace GroupTheory_RubiksCube
                         }
                     }
 
-                    if (foundStateCount <= 0)
-                    {
-                        Generators.Remove(newGenerator);
-
-                        // Protect from Out-of-Memory failure. And to refresh old rejections
-                        if (RejectedGenerators.Count > RejectedGeneratorBufferSize)
-                        {
-                            RejectedGenerators.Clear();
-                        }
-
-                        RejectedGenerators.Add(newGenerator);
-                    }
-                    else
-                    {
-                        // Put in the simpliied newGenerator. Note that we don't simplify generator
-                        // when passed in this method, because it needs to walk through much more
-                        // generators, and in many cases they don't reduce generator length at all.
-                        bool removeRet = Generators.Remove(newGenerator);
-                        Utils.DebugAssert(removeRet);
-                        newGenerator = newGenerator.Simplify(CubeAction.SimplifyLevel.Level0);
-                        Generators.Add(newGenerator);
-
-                        Console.WriteLine(
-                            $"Stablized[{Stablized.Indexes.Count}] " +
-                            $"AddGeneratorIncrementally: Accepted new generator: " +
-                            $"foundStateCount={foundStateCount} Generators={Generators.Count} " +
-                            $"Cosets={OrbitToCoset.Count} RejectedGenerators={RejectedGenerators.Count} " +
-                            $"newGenerator=[{newGenerator}] ");
-
-                        // Since we have new generators added, we give previously rejected a new chance
-                        RejectedGenerators.Clear();
-                    }
+                    Console.WriteLine(
+                        $"Stablized[{Stablized.Indexes.Count}] " +
+                        $"AddGeneratorIncrementally: Accepted new generator: " +
+                        $"foundStateCount={foundStateCount} Generators={Generators.Count} " +
+                        $"Cosets={OrbitToCoset.Count} FilterCount={GeneratorFilter.ModifyCount} " +
+                        $"newGenerator=[{newGenerator}]");
 
                     if (progressInfo != null)
                     {
@@ -528,7 +511,7 @@ namespace GroupTheory_RubiksCube
                         stablized.Indexes.UnionWith(StablizerChain[si].Indexes);
                     }
 
-                    var gCurrent = new GStep(stablized, toStablize);
+                    var gCurrent = new GStep(stablized, toStablize, StablizerChain);
                     gSteps.Add(gCurrent);
 
                     if (i > 0)
@@ -566,15 +549,6 @@ namespace GroupTheory_RubiksCube
                 {
                     gSteps[0].AddGeneratorIncrementally(g, progressInfoList);
                     progressInfo.CompletedWork++;
-                }
-
-                //
-                // Clear the RejectedGenerators, this is to relieve memory pressure
-                //
-
-                foreach (var gStep in gSteps)
-                {
-                    gStep.RejectedGenerators.Clear();
                 }
 
                 //
@@ -646,6 +620,3 @@ namespace GroupTheory_RubiksCube
         }
     }
 }
-
-// TODO Jerrum's Filter. And we need to rearrange the order according stablizer chain, before we obtain (i, j).
-// http://www.m8j.net/data/List/Files-118/Documentation.pdf, https://mathstrek.blog/2018/06/12/schreier-sims-algorithm/, https://www.jmilne.org/math/CourseNotes/GT310.pdf

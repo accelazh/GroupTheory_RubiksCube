@@ -20,7 +20,7 @@ namespace GroupTheory_RubiksCube
         public static int GetHashCode<T>(IEnumerable<T> array)
         {
             int ret = array.Count();
-            foreach(var e in array)
+            foreach (var e in array)
             {
                 ret = unchecked(ret * 23 + e.GetHashCode());
             }
@@ -28,7 +28,7 @@ namespace GroupTheory_RubiksCube
             return ret;
         }
 
-        public static bool Array2DEqual<T>(T[,] a, T[,]b)
+        public static bool Array2DEqual<T>(T[,] a, T[,] b)
         {
             if (a.Rank != b.Rank)
             {

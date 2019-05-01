@@ -20,7 +20,7 @@ namespace GroupTheory_RubiksCube
                 this.State = new CubeState(state);
             }
 
-            public BlockSet(BlockSet blockSet): this(blockSet.State, blockSet.Indexes)
+            public BlockSet(BlockSet blockSet) : this(blockSet.State, blockSet.Indexes)
             {
                 // Do nothing
             }

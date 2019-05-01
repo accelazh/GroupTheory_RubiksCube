@@ -8,7 +8,7 @@ namespace GroupTheory_RubiksCube
     /// 4 * 4 * 4 Rubik's Cube. Convenience online: https://alg.cubing.net
     namespace level4
     {
-        public class CubeState: IEquatable<CubeState>
+        public class CubeState : IEquatable<CubeState>
         {
             public const int Level = 4;
             public const int CornerCount = 8;
@@ -861,7 +861,7 @@ namespace GroupTheory_RubiksCube
 
             public void Op_3U()
             {
-                int?[] position = new int?[] { null, null, -Level / 2 + 1};
+                int?[] position = new int?[] { null, null, -Level / 2 + 1 };
                 foreach (var block in BlocksMatchingPosition(position))
                 {
                     block.Rotate(Axis.Z, Direction.Positive);

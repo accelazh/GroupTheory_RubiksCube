@@ -209,17 +209,17 @@ namespace GroupTheory_RubiksCube
                     "Expecting timeNoAcc is similar to timeAcc, " +
                     "otherwise adjust CubeAction.OpCountForAccelerationMap");
 
-                for (int i = 0; i < 10; i++)
+                for (int i = 0; i < 5; i++)
                 {
                     long timeStart = Utils.CurrentTimeMillis();
 
-                    for (int j = 0; j < 1000; j++)
+                    for (int j = 0; j < 500; j++)
                     {
                         actionNoAcc.Act(state);
                     }
                     long timeNoAcc = Utils.CurrentTimeMillis();
 
-                    for (int j = 0; j < 1000; j++)
+                    for (int j = 0; j < 500; j++)
                     {
                         actionAcc.Act(state);
                     }

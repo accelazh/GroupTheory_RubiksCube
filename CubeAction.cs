@@ -43,7 +43,7 @@ namespace GroupTheory_RubiksCube
                 this.VerifySetupAccelerationMap();
             }
 
-            public CubeAction(IEnumerable<CubeOp.Type> ops) : this (ops, true)
+            public CubeAction(IEnumerable<CubeOp.Type> ops) : this(ops, true)
             {
                 // Do nothing
             }
@@ -76,10 +76,12 @@ namespace GroupTheory_RubiksCube
                 return new CubeAction(opInts);
             }
 
-            public List<CubeOp.Type> GetOps()
+            public ActionMap GetAccelerationMap()
             {
-                return new List<CubeOp.Type>(Ops);
+                LazyBuildAccelerationMap();
+                return this.AccelerationMap;
             }
+
 
             public int Count()
             {
@@ -225,6 +227,13 @@ namespace GroupTheory_RubiksCube
                     return;
                 }
 
+                // As observed, some newOps may keep loop deleting for very long time
+                // but never finish, each loop only deletes few duplicates. We add a hard
+                // limit to it.
+                const int MAX_MINOR_LOOP_COUNT = 10;
+                const int MINOR_LOOP_THRESHOLD = 4;
+                int minorLoopCount = 0;
+
                 //
                 // In first round, we expect many duplicates to be removed in one
                 // run.
@@ -234,7 +243,7 @@ namespace GroupTheory_RubiksCube
                 //
 
                 var newOpsInOperation = new LinkedList<CubeOp.Type>(newOps);
-                while (true)
+                while (minorLoopCount < MAX_MINOR_LOOP_COUNT)
                 {
                     var duplicateList = new List<Tuple<int, int, CubeOp.Type>>(
                                                 Utils.PackDuplicates(newOpsInOperation)
@@ -244,6 +253,8 @@ namespace GroupTheory_RubiksCube
                     {
                         break;
                     }
+
+                    int totalDeleteCount = 0;
 
                     int deleteOffset = 0;
                     var node = newOpsInOperation.First;
@@ -269,53 +280,58 @@ namespace GroupTheory_RubiksCube
                         }
 
                         deleteOffset += lengthToDelete;
+                        totalDeleteCount++;
                     }
 
-                    if (duplicateList.Count > 1)
+                    if (1 == duplicateList.Count)
                     {
-                        continue;
+                        //
+                        // To speed up a special case frequently observed: Before we removed,
+                        // we have only 1 4-length duplicate. After removal, another 1, and only
+                        // 1 4-length duplicate showed up. This can repeat incredibly many times,
+                        // and drag down for ~10+ seconds for a ~1700K long CubeAction.
+                        //
+
+                        int foundCount = 0;  // 1300+ last time observed
+                        while (node != null)
+                        {
+                            // Back to duplicate chain start
+                            while (node.Previous != null && node.Previous.Value == node.Value)
+                            {
+                                node = node.Previous;
+                                idx--;
+                            }
+
+                            int duplicateCount = 1;
+                            var probingNode = node;
+
+                            // Count how many duplicates we have
+                            while (probingNode.Next != null && probingNode.Next.Value == probingNode.Value)
+                            {
+                                probingNode = probingNode.Next;
+                                duplicateCount++;
+                            }
+
+                            if (duplicateCount % CubeState.TurnAround != 0)
+                            {
+                                break;
+                            }
+
+                            for (int i = 0; i < duplicateCount; i++)
+                            {
+                                var next = node.Next;
+                                newOpsInOperation.Remove(node);
+                                node = next;
+                            }
+
+                            foundCount++;
+                        }
+                        totalDeleteCount += foundCount;
                     }
 
-                    //
-                    // To speed up a special case frequently observed: Before we removed,
-                    // we have only 1 4-length duplicate. After removal, another 1, and only
-                    // 1 4-length duplicate showed up. This can repeat incredibly many times,
-                    // and drag down for ~10+ seconds for a ~1700K long CubeAction.
-                    //
-
-                    int foundCount = 0;  // 1300+ last time observed
-                    while (true)
+                    if (totalDeleteCount <= MINOR_LOOP_THRESHOLD)
                     {
-                        // Back to duplicate chain start
-                        while (node.Previous != null && node.Previous.Value == node.Value)
-                        {
-                            node = node.Previous;
-                            idx--;
-                        }
-
-                        int duplicateCount = 1;
-                        var probingNode = node;
-
-                        // Count how many duplicates we have
-                        while (probingNode.Next != null && probingNode.Next.Value == probingNode.Value)
-                        {
-                            probingNode = probingNode.Next;
-                            duplicateCount++;
-                        }
-
-                        if (duplicateCount % CubeState.TurnAround != 0)
-                        {
-                            break;
-                        }
-
-                        for (int i = 0; i < duplicateCount; i++)
-                        {
-                            var next = node.Next;
-                            newOpsInOperation.Remove(node);
-                            node = next;
-                        }
-
-                        foundCount++;
+                        minorLoopCount++;
                     }
                 }
 

@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Text;
@@ -220,7 +220,7 @@ namespace GroupTheory_RubiksCube
                         }
                         break;
                     case CubeState.Direction.Negative:
-                        if (position[(int)axis] != - CubeState.Level / 2)
+                        if (position[(int)axis] != -CubeState.Level / 2)
                         {
                             throw new ArgumentException();
                         }
@@ -365,7 +365,7 @@ namespace GroupTheory_RubiksCube
 
                 if (Utils.ShouldVerify())
                 {
-                   ret.Validate();
+                    ret.Validate();
                 }
                 return ret;
             }
@@ -439,4 +439,3 @@ namespace GroupTheory_RubiksCube
         }
     }
 }
-
