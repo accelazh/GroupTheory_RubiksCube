@@ -413,120 +413,31 @@ namespace GroupTheory_RubiksCube
                 return ret;
             }
 
-            // It can be ~3 seconds for long CubeActions, e.g. Ops.Count ~60K
-            private static void SimplifyNoops(List<CubeOp.Type> newOps)
+            // It can be ~3 seconds for long CubeActions, e.g. Ops.Count ~600K.
+            private static List<CubeOp.Type> SimplifyNoops(IEnumerable<CubeOp.Type> newOps)
             {
-                if (newOps.Count <= 0)
+                var ret = new List<CubeOp.Type>();
+                if (newOps.Count() <= 0)
                 {
-                    return;
+                    return ret;
                 }
 
                 // As observed, some newOps may keep loop deleting for very long time
                 // but never finish, each loop only deletes few duplicates. We add a hard
-                // limit to it.
-                const int MAX_LOOP_COUNT = 1;
-                int loopCount = 0;
-
-                //
-                // In first round, we expect many duplicates to be removed in one
-                // run.
-                //
-                // In following rounds, as observed in testing, we may reveal more
-                // duplicates after each round of removal. It may repeat many times.
-                //
-
-                var newOpsInOperation = new LinkedList<CubeOp.Type>(newOps);
-                while (loopCount < MAX_LOOP_COUNT)
+                // limit to it. Practically, the first loop removes absolutely most duplicates.
                 {
-                    var duplicateList = new List<Tuple<int, int, CubeOp.Type>>(
-                                                Utils.PackDuplicates(newOpsInOperation)
-                                                .Where(t => t.Item2 >= CubeState.TurnAround));
-
-                    if (duplicateList.Count <= 0)
+                    // Previously we tried LinkedList for flexible deletion, but later
+                    // we found LinkedList constructor took ~50% time in total.
+                    foreach (var dup in Utils.PackDuplicates(newOps))
                     {
-                        break;
+                        CubeOp.Type op = dup.Item3;
+                        int lengthToCopy = dup.Item2 % CubeState.TurnAround;
+
+                        ret.AddRange(Enumerable.Repeat(op, lengthToCopy));
                     }
-
-                    int totalDeleteCount = 0;
-
-                    int deleteOffset = 0;
-                    var node = newOpsInOperation.First;
-                    var idx = 0;
-
-                    foreach (var dup in duplicateList)
-                    {
-                        int startIdx = dup.Item1 - deleteOffset;
-                        int length = dup.Item2;
-                        int lengthToDelete = (length / CubeState.TurnAround) * CubeState.TurnAround;
-
-                        while (idx < startIdx)
-                        {
-                            node = node.Next;
-                            idx++;
-                        }
-
-                        for (int i = 0; i < lengthToDelete; i++)
-                        {
-                            var next = node.Next;
-                            newOpsInOperation.Remove(node);
-                            node = next;
-                        }
-
-                        deleteOffset += lengthToDelete;
-                        totalDeleteCount++;
-                    }
-
-                    if (1 == duplicateList.Count)
-                    {
-                        //
-                        // To speed up a special case frequently observed: Before we removed,
-                        // we have only 1 4-length duplicate. After removal, another 1, and only
-                        // 1 4-length duplicate showed up. This can repeat incredibly many times,
-                        // and drag down for ~10+ seconds for a ~1700K long CubeAction.
-                        //
-
-                        int foundCount = 0;  // 1300+ last time observed
-                        while (node != null)
-                        {
-                            // Back to duplicate chain start
-                            while (node.Previous != null && node.Previous.Value == node.Value)
-                            {
-                                node = node.Previous;
-                                idx--;
-                            }
-
-                            int duplicateCount = 1;
-                            var probingNode = node;
-
-                            // Count how many duplicates we have
-                            while (probingNode.Next != null && probingNode.Next.Value == probingNode.Value)
-                            {
-                                probingNode = probingNode.Next;
-                                duplicateCount++;
-                            }
-
-                            if (duplicateCount % CubeState.TurnAround != 0)
-                            {
-                                break;
-                            }
-
-                            for (int i = 0; i < duplicateCount; i++)
-                            {
-                                var next = node.Next;
-                                newOpsInOperation.Remove(node);
-                                node = next;
-                            }
-
-                            foundCount++;
-                        }
-                        totalDeleteCount += foundCount;
-                    }
-
-                    loopCount++;
                 }
 
-                newOps.Clear();
-                newOps.AddRange(newOpsInOperation);
+                return ret;
             }
 
             private static void LazyInitActionShrink()
@@ -609,12 +520,11 @@ namespace GroupTheory_RubiksCube
 
                 foreach (var kv in ActionShrinkDict)
                 {
-                    if (Utils.ShouldVerify())
-                    {
-                        var state = new CubeState();
-                        kv.Value.ActOps(state);
-                        Utils.DebugAssert(state.Equals(kv.Key));
-                    }
+                    var state = new CubeState();
+                    kv.Value.ActOps(state);
+                    Utils.DebugAssert(state.Equals(kv.Key));
+
+                    Utils.DebugAssert(!kv.Value.RefMode);
                 }
             }
 
@@ -695,58 +605,61 @@ namespace GroupTheory_RubiksCube
                 Console.WriteLine("done");
             }
 
-            public CubeAction Simplify(SimplifyLevel level)
+            private void Flat()
+            {
+                RefMode = false;
+                OpNode = Operator.Mul;  // Default zero value
+                Operand.Clear();
+                BufferedCount = -1;
+            }
+
+            public void Simplify(SimplifyLevel level)
             {
                 if (Simplified[(int)level])
                 {
-                    return new CubeAction(this);
+                    return;
                 }
-                Simplified[(int)level] = true;
+
+                var originalAction = new CubeAction(this);
 
                 if (RefMode)
                 {
-                    if (level >= SimplifyLevel.Level1)
+                    if (level >= SimplifyLevel.Level1 && !Simplified[(int)SimplifyLevel.Level1])
                     {
-                        for (int i = 0;i < Operand.Count; i++)
-                        {
-                            Operand[i] = Operand[i].Simplify(level);
-                        }
-
-                        // Flat myself
-                        var myOps = GetOps().ToList();
-                        var ret = new CubeAction(myOps, false);
-                        ret.AccelerationMap = GetAccelerationMap();
-
-                        ret = ret.Simplify(level);
-                        return ret;
+                        // Flat myself.
+                        // SimplifyNoops with online iterator, so that we may avoid OOM
+                        // for very large CubeActions
+                        this.Ops = SimplifyNoops(GetOps());
+                        Flat();
                     }
-                    else
+
+                    if (level >= SimplifyLevel.Level2 && !Simplified[(int)SimplifyLevel.Level2])
                     {
-                        return new CubeAction(this);
+                        Utils.DebugAssert(!RefMode);
+                        SimplifyActionShrink(Ops);
                     }
                 }
                 else
                 {
-                    var newOps = new List<CubeOp.Type>(Ops);
-
-                    SimplifyNoops(newOps);
-                    if (level >= SimplifyLevel.Level2)
+                    if (level >= SimplifyLevel.Level0 && !Simplified[(int)SimplifyLevel.Level0])
                     {
-                        SimplifyActionShrink(newOps);
+                        this.Ops = SimplifyNoops(Ops);
                     }
 
-                    var newAction = new CubeAction(newOps, false);
-                    if (AccelerationMap != null)
+                    if (level >= SimplifyLevel.Level2 && !Simplified[(int)SimplifyLevel.Level2])
                     {
-                        newAction.AccelerationMap = new ActionMap(AccelerationMap);
+                        SimplifyActionShrink(Ops);
                     }
-                    newAction.VerifySetupAccelerationMap();
+                }
 
-                    if (Utils.ShouldVerify())
-                    {
-                        Utils.DebugAssert(newAction.EqualOps(this));
-                    }
-                    return newAction;
+                for (int i = 0; i <= (int)level; i++)
+                {
+                    Simplified[(int)level] = true;
+                }
+
+                if (Utils.ShouldVerify())
+                {
+                    Utils.DebugAssert(originalAction.EqualOps(this));
                 }
             }
 
@@ -846,8 +759,7 @@ namespace GroupTheory_RubiksCube
             {
                 var outStr = new StringBuilder();
 
-                var opList = Enumerable.Reverse(GetOps());
-                foreach (var dup in Utils.PackDuplicates(opList))
+                foreach (var dup in Utils.PackDuplicates(Enumerable.Reverse(GetOps())))
                 {
                     var op = dup.Item3;
                     var count = dup.Item2;

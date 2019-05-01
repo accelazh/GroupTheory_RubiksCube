@@ -29,7 +29,7 @@ namespace GroupTheory_RubiksCube
                     }
                 }
 
-                public const bool PrintProgress = false;
+                public bool PrintProgress = false;
 
                 public BlockSet Stablized;
 
@@ -77,7 +77,7 @@ namespace GroupTheory_RubiksCube
                         Utils.DebugAssert(startCoset != null);
 
                         var newCoset = generator.Mul(startCoset);
-                        newCoset = newCoset.Simplify(CubeAction.SimplifyLevel.Level0);
+                        newCoset.Simplify(CubeAction.SimplifyLevel.Level0);
                         OrbitToCoset.Add(newState, newCoset);
                     }
 
@@ -397,9 +397,6 @@ namespace GroupTheory_RubiksCube
                         return 0;
                     }
 
-                    var newGeneratorSimplified = newGenerator.Simplify(CubeAction.SimplifyLevel.Level0);
-                    newGenerator = newGeneratorSimplified;
-
                     ProgressInfo progressInfo = null;
                     int foundStateCount = 0;
                     {
@@ -567,31 +564,43 @@ namespace GroupTheory_RubiksCube
                 }
 
                 //
-                // Simplify each generators. This could take time but is optional
+                // Simplify each cosets. But we don't need to simplify generators
+                // to solve the cube.
                 //
 
                 foreach (var gStep in gSteps)
                 {
-                    Console.WriteLine(
-                        $"Simplifying GStep: Stablized={gStep.Stablized.Indexes.Count} " +
-                        $"Generators={gStep.Generators.Count} Cosets={gStep.OrbitToCoset.Count} ...");
-
-                    var oldGenerators = new HashSet<CubeAction>(gStep.Generators);
-                    gStep.Generators.Clear();
-
-                    foreach (var g in oldGenerators)
+                    int count = 0;
+                    foreach (var bs in gStep.OrbitToCoset.Keys)
                     {
-                        var gSimplified = g.Simplify(CubeAction.SimplifyLevel.Level2);
-                        gStep.Generators.Add(gSimplified);
-                    }
+                        count++;
 
-                    var exsitingOrbit = new List<BlockSet>(gStep.OrbitToCoset.Keys);
-                    foreach (var bs in exsitingOrbit)
-                    {
+                        Console.WriteLine(
+                            $"Stablized[{gStep.Stablized.Indexes.Count}] " +
+                            $"Simplifying Coset: Level1: " +
+                            $"Cosets={count}/{gStep.OrbitToCoset.Count}" +
+                            $"Generators={gStep.Generators.Count} ");
+
                         var coset = gStep.OrbitToCoset[bs];
-                        var cosetSimplified = coset.Simplify(CubeAction.SimplifyLevel.Level2);
+                        coset.Simplify(CubeAction.SimplifyLevel.Level1);
+                    }
+                }
 
-                        gStep.OrbitToCoset[bs] = cosetSimplified;
+                foreach (var gStep in gSteps)
+                {
+                    int count = 0;
+                    foreach (var bs in gStep.OrbitToCoset.Keys)
+                    {
+                        count++;
+
+                        Console.WriteLine(
+                            $"Stablized[{gStep.Stablized.Indexes.Count}] " +
+                            $"Simplifying Coset: Level2: " +
+                            $"Cosets={count}/{gStep.OrbitToCoset.Count}" +
+                            $"Generators={gStep.Generators.Count} ");
+
+                        var coset = gStep.OrbitToCoset[bs];
+                        coset.Simplify(CubeAction.SimplifyLevel.Level2);
                     }
                 }
             }
@@ -635,5 +644,3 @@ namespace GroupTheory_RubiksCube
         }
     }
 }
-
-// TODO We should let Simplify be internal simplify rather than return anything. So that we can reuse the layered simplify results
