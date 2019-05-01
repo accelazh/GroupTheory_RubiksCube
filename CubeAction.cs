@@ -23,10 +23,25 @@ namespace GroupTheory_RubiksCube
             public const int OpCountForAccelerationMap = 230;
             private ActionMap AccelerationMap;
 
+            // If RefMode, we track the formula of this CubeAction, rather than its
+            // ops. In this way, for very long CubeAction, we don't need to store
+            // the exponentially growing Ops list, and we don't need to spent time
+            // doing SimplifyNoops to reduce length
+            public const int RefModeLengthThreshold = 1000;
+            public bool RefMode = false;
+            public Operator OpNode;  // Image the CubeAction is a tree composed by Operators
+            public List<CubeAction> Operand = new List<CubeAction>();
+
             public enum SimplifyLevel
             {
                 Level0 = 0,
                 Level1 = 1,
+            }
+
+            public enum Operator
+            {
+                Mul = 0,
+                Reverse,
             }
 
             public CubeAction()
@@ -39,6 +54,10 @@ namespace GroupTheory_RubiksCube
             {
                 this.Ops = new List<CubeOp.Type>(other.Ops);
                 this.AccelerationMap = other.AccelerationMap;
+
+                this.RefMode = other.RefMode;
+                this.OpNode = other.OpNode;
+                this.Operand = new List<CubeAction>(other.Operand);
 
                 this.VerifySetupAccelerationMap();
             }
@@ -65,6 +84,34 @@ namespace GroupTheory_RubiksCube
                 }
             }
 
+            private CubeAction(
+                Operator opNode, CubeAction operandLeft, CubeAction operandRight,
+                bool buildAccelerationMap)
+            {
+                this.RefMode = true;
+                this.OpNode = opNode;
+                switch(opNode)
+                {
+                    case Operator.Mul:
+                        Operand.Add(operandLeft);
+                        Operand.Add(operandRight);
+                        break;
+                    case Operator.Reverse:
+                        Operand.Add(operandLeft);
+                        Utils.DebugAssert(null == operandRight);
+                        break;
+                    default:
+                        throw new ArgumentException();
+                }
+
+                if (buildAccelerationMap)
+                {
+                    // RefMode must rely on ActionMap to Act, but in special
+                    // cases we want to pass in the ActionMap
+                    LazyBuildAccelerationMap();
+                }
+            }
+
             public static CubeAction Random(int length)
             {
                 int[] opInts = new int[length];
@@ -76,36 +123,90 @@ namespace GroupTheory_RubiksCube
                 return new CubeAction(opInts);
             }
 
+            public IEnumerable<CubeOp.Type> GetOps()
+            {
+                if (RefMode)
+                {
+                    if (Operator.Mul == OpNode)
+                    {
+                        Utils.DebugAssert(Operand.Count == 2);
+                        foreach (var op in Operand[0].GetOps())
+                        {
+                            yield return op;
+                        }
+                        foreach (var op in Operand[1].GetOps())
+                        {
+                            yield return op;
+                        }
+                    }
+                    else if (Operator.Reverse == OpNode)
+                    {
+                        Utils.DebugAssert(Operand.Count == 1);
+                        foreach (var op in Enumerable.Reverse(Operand[0].GetOps()))
+                        {
+                            foreach (var innerOp in CubeOp.Reverse(op))
+                            {
+                                yield return innerOp;
+                            }
+                        }
+                    }
+                    else
+                    {
+                        throw new ArgumentException();
+                    }
+                }
+                else
+                {
+                    foreach (var op in Ops)
+                    {
+                        yield return op;
+                    }
+                }
+            }
+
             public ActionMap GetAccelerationMap()
             {
                 LazyBuildAccelerationMap();
                 return this.AccelerationMap;
             }
 
-
-            public int Count()
+            public long Count()
             {
-                return Ops.Count;
+                if (RefMode)
+                {
+                    if (Operator.Mul == OpNode)
+                    {
+                        Utils.DebugAssert(Operand.Count == 2);
+                        return Operand[0].Count() + Operand[1].Count();
+                    }
+                    else if (Operator.Reverse == OpNode)
+                    {
+                        Utils.DebugAssert(Operand.Count == 1);
+                        return Operand[0].Count() * (CubeState.TurnAround - 1); 
+                    }
+                    else
+                    {
+                        throw new ArgumentException();
+                    }
+                }
+                else
+                {
+                    return Ops.Count();
+                }
             }
 
             public void Act(CubeState cubeState)
             {
-                if (Ops.Count == 0)
+                bool shouldVerify = Utils.ShouldVerify();
+                CubeState opsCubeState = null;
+                if (shouldVerify)
                 {
-                    return;
+                    opsCubeState = new CubeState(cubeState);
+                    ActOps(opsCubeState);
                 }
 
-                if (Ops.Count >= OpCountForAccelerationMap)
+                if (RefMode)
                 {
-                    bool shouldVerify = Utils.ShouldVerify();
-
-                    CubeState opsCubeState = null;
-                    if (shouldVerify)
-                    {
-                        opsCubeState = new CubeState(cubeState);
-                        ActOps(opsCubeState);
-                    }
-
                     ActAccelerationMap(cubeState);
                     if (shouldVerify)
                     {
@@ -114,15 +215,58 @@ namespace GroupTheory_RubiksCube
                 }
                 else
                 {
-                    // It's possible AccelerationMap != null. But we choose
-                    // not to use it, because it would be slower.
-                    ActOps(cubeState);
+                    if (Ops.Count == 0)
+                    {
+                        return;
+                    }
+
+                    if (Ops.Count >= OpCountForAccelerationMap)
+                    {
+                        ActAccelerationMap(cubeState);
+                        if (shouldVerify)
+                        {
+                            Utils.DebugAssert(opsCubeState.Equals(cubeState));
+                        }
+                    }
+                    else
+                    {
+                        // It's possible AccelerationMap != null. But we choose
+                        // not to use it, because it would be slower.
+                        ActOps(cubeState);
+                    }
                 }
             }
 
             private void ActOps(CubeState cubeState)
             {
-                CubeOp.Op(cubeState, Ops);
+                if (RefMode)
+                {
+                    //
+                    // For RefMode, we must rely on ActionMap to operate.
+                    // Then ActOps means to rely on the Operands, rather
+                    // than myself to perform the Act.
+                    //
+
+                    if (Operator.Mul == OpNode)
+                    {
+                        Utils.DebugAssert(Operand.Count == 2);
+                        Operand[1].Act(cubeState);
+                        Operand[0].Act(cubeState);
+                    }
+                    else if (Operator.Reverse == OpNode)
+                    {
+                        Utils.DebugAssert(Operand.Count == 1);
+                        Operand[0].GetAccelerationMap().Reverse().Act(cubeState);
+                    }
+                    else
+                    {
+                        throw new ArgumentException();
+                    }
+                }
+                else
+                {
+                    CubeOp.Op(cubeState, Ops);
+                }
             }
 
             private void LazyBuildAccelerationMap()
@@ -163,9 +307,24 @@ namespace GroupTheory_RubiksCube
                     return;
                 }
 
-                if (Ops.Count > OpCountForAccelerationMap)
+                if (RefMode)
                 {
                     Utils.DebugAssert(AccelerationMap != null);
+                }
+                else
+                {
+                    if (Ops.Count > OpCountForAccelerationMap)
+                    {
+                        Utils.DebugAssert(AccelerationMap != null);
+                    }
+                }
+            }
+
+            private void VerifySetupRefMode()
+            {
+                if (Ops.Count >= RefModeLengthThreshold)
+                {
+                    Utils.DebugAssert(false);
                 }
             }
 
@@ -177,45 +336,62 @@ namespace GroupTheory_RubiksCube
 
             public CubeAction Reverse()
             {
-                var reverseOps = new List<CubeOp.Type>();
-                foreach (var opType in Enumerable.Reverse(Ops))
-                {
-                    reverseOps.AddRange(CubeOp.Reverse(opType));
-                }
+                var reverseAction = new CubeAction(Operator.Reverse, this, null, false);
 
-                var ret = new CubeAction(reverseOps, false);
-                if (AccelerationMap != null)
+                CubeAction ret;
+                if (reverseAction.Count() >= RefModeLengthThreshold)
                 {
-                    ret.AccelerationMap = AccelerationMap.Reverse();
-                    ret.VerifyAccelerationMap();
+                    reverseAction.AccelerationMap = GetAccelerationMap().Reverse();
+                    ret = reverseAction;
+                }
+                else
+                {
+                    var reverseOps = reverseAction.GetOps();
+                    ret = new CubeAction(reverseOps, false);
+                    if (AccelerationMap != null)
+                    {
+                        ret.AccelerationMap = AccelerationMap.Reverse();
+                        ret.VerifyAccelerationMap();
+                    }
                 }
 
                 ret.VerifySetupAccelerationMap();
+                ret.VerifySetupRefMode();
                 return ret;
             }
 
             public CubeAction Mul(CubeAction other)
             {
-                if (Ops.Count + other.Ops.Count > OpCountForAccelerationMap)
+                var mulAction = new CubeAction(Operator.Mul, this, other, false);
+
+                CubeAction ret;
+                if (mulAction.Count() >= RefModeLengthThreshold)
                 {
-                    // As tested, without aggressively propagate building AccelerationMap,
-                    // there can be many long generators * short generators, that resulted
-                    // in new long generators without AccelerationMap.
-                    LazyBuildAccelerationMap();
-                    other.LazyBuildAccelerationMap();
+                    mulAction.AccelerationMap = GetAccelerationMap().Mul(other.GetAccelerationMap());
+                    ret = mulAction;
                 }
-
-                var mulOps = new List<CubeOp.Type>(Ops);
-                mulOps.AddRange(other.Ops);
-
-                var ret = new CubeAction(mulOps, false);
-                if (AccelerationMap != null && other.AccelerationMap != null)
+                else
                 {
-                    ret.AccelerationMap = AccelerationMap.Mul(other.AccelerationMap);
-                    ret.VerifyAccelerationMap();
+                    if (Ops.Count + other.Ops.Count > OpCountForAccelerationMap)
+                    {
+                        // As tested, without aggressively propagate building AccelerationMap,
+                        // there can be many long generators * short generators, that resulted
+                        // in new long generators without AccelerationMap.
+                        LazyBuildAccelerationMap();
+                        other.LazyBuildAccelerationMap();
+                    }
+
+                    var mulOps = mulAction.GetOps();
+                    ret = new CubeAction(mulOps, false);
+                    if (AccelerationMap != null && other.AccelerationMap != null)
+                    {
+                        ret.AccelerationMap = AccelerationMap.Mul(other.AccelerationMap);
+                        ret.VerifyAccelerationMap();
+                    }
                 }
 
                 ret.VerifySetupAccelerationMap();
+                ret.VerifySetupRefMode();
                 return ret;
             }
 
@@ -230,7 +406,7 @@ namespace GroupTheory_RubiksCube
                 // As observed, some newOps may keep loop deleting for very long time
                 // but never finish, each loop only deletes few duplicates. We add a hard
                 // limit to it.
-                const int MAX_LOOP_COUNT = 2;
+                const int MAX_LOOP_COUNT = 100;
                 int loopCount = 0;
 
                 //
@@ -511,26 +687,38 @@ namespace GroupTheory_RubiksCube
 
             public CubeAction Simplify(SimplifyLevel level)
             {
-                var newOps = new List<CubeOp.Type>(Ops);
-
-                SimplifyNoops(newOps);
-                if (level >= SimplifyLevel.Level1)
+                if (RefMode)
                 {
-                    SimplifyActionShrink(newOps);
-                }
+                    // Flat myself
+                    var ret = new CubeAction(GetOps(), false);
+                    ret.AccelerationMap = GetAccelerationMap();
+                    ret = ret.Simplify(level);
 
-                var newAction = new CubeAction(newOps, false);
-                if (AccelerationMap != null)
-                {
-                    newAction.AccelerationMap = new ActionMap(AccelerationMap);
+                    return ret;
                 }
-                newAction.VerifySetupAccelerationMap();
+                else
+                {
+                    var newOps = new List<CubeOp.Type>(Ops);
 
-                if (Utils.ShouldVerify())
-                {
-                    Utils.DebugAssert(newAction.EqualOps(this));
+                    SimplifyNoops(newOps);
+                    if (level >= SimplifyLevel.Level1)
+                    {
+                        SimplifyActionShrink(newOps);
+                    }
+
+                    var newAction = new CubeAction(newOps, false);
+                    if (AccelerationMap != null)
+                    {
+                        newAction.AccelerationMap = new ActionMap(AccelerationMap);
+                    }
+                    newAction.VerifySetupAccelerationMap();
+
+                    if (Utils.ShouldVerify())
+                    {
+                        Utils.DebugAssert(newAction.EqualOps(this));
+                    }
+                    return newAction;
                 }
-                return newAction;
             }
 
             public static CubeState RandomCube(int actionLength)
@@ -629,7 +817,7 @@ namespace GroupTheory_RubiksCube
             {
                 var outStr = new StringBuilder();
 
-                var opList = Enumerable.Reverse(Ops);
+                var opList = Enumerable.Reverse(GetOps());
                 foreach (var dup in Utils.PackDuplicates(opList))
                 {
                     var op = dup.Item3;

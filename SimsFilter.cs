@@ -57,9 +57,6 @@ namespace GroupTheory_RubiksCube
                     throw new ArgumentException();
                 }
 
-                var newGeneratorSimplified = newGenerator.Simplify(CubeAction.SimplifyLevel.Level0);
-                newGenerator = newGeneratorSimplified;
-
                 var existingGenerator = ActionGrid[pair.Item1, pair.Item2];
                 if (null == existingGenerator)
                 {

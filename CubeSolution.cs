@@ -103,8 +103,8 @@ namespace GroupTheory_RubiksCube
                                 $"Stablized[{Stablized.Indexes.Count}] " +
                                 $"ExploreNewGeneratorOnExistingCosets: foundCount/needWalk/total=" +
                                 $"{newStates.Count}/{needWalkStates.Count - walkedCount}/{OrbitToCoset.Count} " +
-                                $"newState=[{newState}] newCoset=[{OrbitToCoset[newState]}] " +
-                                $"startState=[{startState}] generator=[{newGenerator}]");
+                                $"newState=[{newState}] newCoset=[{OrbitToCoset[newState].Count()}] " +
+                                $"startState=[{startState}] generator=[{newGenerator.Count()}]");
                         }
                     }
 
@@ -141,8 +141,8 @@ namespace GroupTheory_RubiksCube
                                         $"ExploreNewCosetsByExistingGenerator: allFound/foundCount/needWalk/total=" +
                                         $"{newCosets.Count}/{foundCount}" +
                                         $"/{needWalkStates.Count * Generators.Count - walkedCount}/{OrbitToCoset.Count} " +
-                                        $"newState=[{newState}] newCoset=[{OrbitToCoset[newState]}] " +
-                                        $"startState=[{startState}] generator=[{generator}]");
+                                        $"newState=[{newState}] newCoset=[{OrbitToCoset[newState].Count()}] " +
+                                        $"startState=[{startState}] generator=[{generator.Count()}]");
                                 }
                             }
                         }
@@ -397,6 +397,9 @@ namespace GroupTheory_RubiksCube
                         return 0;
                     }
 
+                    var newGeneratorSimplified = newGenerator.Simplify(CubeAction.SimplifyLevel.Level0);
+                    newGenerator = newGeneratorSimplified;
+
                     ProgressInfo progressInfo = null;
                     int foundStateCount = 0;
                     {
@@ -419,12 +422,12 @@ namespace GroupTheory_RubiksCube
                     }
 
                     Utils.DebugAssert(GeneratorFilter.AcceptedGeneratorCount == Generators.Count);
-                    /*Console.WriteLine(
+                    Console.WriteLine(
                         $"Stablized[{Stablized.Indexes.Count}] " +
                         $"AddGeneratorIncrementally: Accepted new generator: " +
                         $"foundStateCount={foundStateCount} Generators={Generators.Count} " +
                         $"Cosets={OrbitToCoset.Count} FilterCount={GeneratorFilter.ModifyCount} " +
-                        $"newGenerator=[{newGenerator}]");*/ // TODO debug
+                        $"newGenerator=[{newGenerator.Count()}]");
 
                     if (progressInfo != null)
                     {
