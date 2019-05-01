@@ -581,7 +581,7 @@ namespace GroupTheory_RubiksCube
 
                     foreach (var g in oldGenerators)
                     {
-                        var gSimplified = g.Simplify(CubeAction.SimplifyLevel.Level1);
+                        var gSimplified = g.Simplify(CubeAction.SimplifyLevel.Level2);
                         gStep.Generators.Add(gSimplified);
                     }
 
@@ -589,7 +589,7 @@ namespace GroupTheory_RubiksCube
                     foreach (var bs in exsitingOrbit)
                     {
                         var coset = gStep.OrbitToCoset[bs];
-                        var cosetSimplified = coset.Simplify(CubeAction.SimplifyLevel.Level1);
+                        var cosetSimplified = coset.Simplify(CubeAction.SimplifyLevel.Level2);
 
                         gStep.OrbitToCoset[bs] = cosetSimplified;
                     }

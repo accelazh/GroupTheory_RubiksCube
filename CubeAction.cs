@@ -31,11 +31,15 @@ namespace GroupTheory_RubiksCube
             public bool RefMode = false;
             public Operator OpNode;  // Image the CubeAction is a tree composed by Operators
             public List<CubeAction> Operand = new List<CubeAction>();
+            private long BufferedCount = -1;
+
+            private bool[] Simplified = new bool[Enum.GetNames(typeof(SimplifyLevel)).Length];
 
             public enum SimplifyLevel
             {
                 Level0 = 0,
-                Level1 = 1,
+                Level1,
+                Level2,
             }
 
             public enum Operator
@@ -58,6 +62,9 @@ namespace GroupTheory_RubiksCube
                 this.RefMode = other.RefMode;
                 this.OpNode = other.OpNode;
                 this.Operand = new List<CubeAction>(other.Operand);
+                this.BufferedCount = other.BufferedCount;
+
+                Array.Copy(other.Simplified, this.Simplified, this.Simplified.Length);
 
                 this.VerifySetupAccelerationMap();
             }
@@ -174,20 +181,29 @@ namespace GroupTheory_RubiksCube
             {
                 if (RefMode)
                 {
+                    if (BufferedCount >= 0)
+                    {
+                        return BufferedCount;
+                    }
+
+                    long retCount;
                     if (Operator.Mul == OpNode)
                     {
                         Utils.DebugAssert(Operand.Count == 2);
-                        return Operand[0].Count() + Operand[1].Count();
+                        retCount = Operand[0].Count() + Operand[1].Count();
                     }
                     else if (Operator.Reverse == OpNode)
                     {
                         Utils.DebugAssert(Operand.Count == 1);
-                        return Operand[0].Count() * (CubeState.TurnAround - 1); 
+                        retCount = Operand[0].Count() * (CubeState.TurnAround - 1); 
                     }
                     else
                     {
                         throw new ArgumentException();
                     }
+
+                    BufferedCount = retCount;
+                    return retCount;
                 }
                 else
                 {
@@ -339,7 +355,8 @@ namespace GroupTheory_RubiksCube
                 var reverseAction = new CubeAction(Operator.Reverse, this, null, false);
 
                 CubeAction ret;
-                if (reverseAction.Count() >= RefModeLengthThreshold)
+                if (this.RefMode || reverseAction.Count() >= RefModeLengthThreshold
+                    || reverseAction.Count() < 0)  // It could overflow for very large CubeAction, but we tolerate it
                 {
                     reverseAction.AccelerationMap = GetAccelerationMap().Reverse();
                     ret = reverseAction;
@@ -365,7 +382,8 @@ namespace GroupTheory_RubiksCube
                 var mulAction = new CubeAction(Operator.Mul, this, other, false);
 
                 CubeAction ret;
-                if (mulAction.Count() >= RefModeLengthThreshold)
+                if (this.RefMode || other.RefMode || mulAction.Count() >= RefModeLengthThreshold
+                    || mulAction.Count() < 0)  // It could overflow for very large CubeAction, but we tolerate it
                 {
                     mulAction.AccelerationMap = GetAccelerationMap().Mul(other.GetAccelerationMap());
                     ret = mulAction;
@@ -406,7 +424,7 @@ namespace GroupTheory_RubiksCube
                 // As observed, some newOps may keep loop deleting for very long time
                 // but never finish, each loop only deletes few duplicates. We add a hard
                 // limit to it.
-                const int MAX_LOOP_COUNT = 100;
+                const int MAX_LOOP_COUNT = 1;
                 int loopCount = 0;
 
                 //
@@ -614,71 +632,63 @@ namespace GroupTheory_RubiksCube
                 Console.Write($"SimplifyActionShrink: Len={newOps.Count} ");
                 Console.Out.Flush();
 
-                while (true)
+                int foundCount = 0;
+                // We iterate in reverse order because CubeAction.Ops are applied in reverse order
+                for (int startIdx = newOps.Count - 1; startIdx >= 0; startIdx--)  // inclusive
                 {
-                    int foundCount = 0;
-                    // We iterate in reverse order because CubeAction.Ops are applied in reverse order
-                    for (int startIdx = newOps.Count - 1; startIdx >= 0; startIdx--)  // inclusive
+                    CubeState probingState = null;
+                    for (int endIdx = startIdx - 1; endIdx >= 0; endIdx--)  // inclusive
                     {
-                        CubeState probingState = null;
-                        for (int endIdx = startIdx - 1; endIdx >= 0; endIdx--)  // inclusive
+                        int opLength = startIdx - endIdx + 1;
+
+                        if (null == probingState)
                         {
-                            int opLength = startIdx - endIdx + 1;
+                            probingState = new CubeState();
 
-                            if (null == probingState)
-                            {
-                                probingState = new CubeState();
-
-                                var action = new CubeAction();
-                                action.Ops = newOps.GetRange(endIdx, opLength);
-                                action.ActOps(probingState);
-                            }
-                            else
-                            {
-                                // Since we iterate in reverse order, we reuse previous calculation
-                                CubeOp.Op(probingState, newOps[endIdx]);
-                            }
-
-                            if (!ActionShrinkDict.ContainsKey(probingState))
-                            {
-                                continue;
-                            }
-
-                            var shortAction = ActionShrinkDict[probingState];
-                            if (shortAction.Ops.Count >= opLength)
-                            {
-                                continue;
-                            }
-
-                            //
-                            // We found a match. Replace it with a shorter op list.
-                            //
-                            // Though we could wait for a longer match of op list,
-                            // or we scan the entire list again after replacement,
-                            // by observation, the current greedy strategy below
-                            // yields good enough result and better performance.
-                            //
-
-                            newOps.RemoveRange(endIdx, opLength);
-                            newOps.InsertRange(endIdx, shortAction.Ops);
-
-                            startIdx = endIdx + shortAction.Ops.Count - 1;
-                            if (startIdx <= endIdx)
-                            {
-                                endIdx = startIdx - 1;
-                            }
-
-                            foundCount++;
-                            Console.Write(
-                                $"{foundCount}:[{opLength}=>{shortAction.Ops.Count}," +
-                                $"Len:{newOps.Count},Action:[{shortAction}]] ");
-                            Console.Out.Flush();
+                            var action = new CubeAction();
+                            action.Ops = newOps.GetRange(endIdx, opLength);
+                            action.ActOps(probingState);
                         }
-                    }
+                        else
+                        {
+                            // Since we iterate in reverse order, we reuse previous calculation
+                            CubeOp.Op(probingState, newOps[endIdx]);
+                        }
 
-                    if (foundCount <= 0)
-                    {
-                        break;
+                        if (!ActionShrinkDict.ContainsKey(probingState))
+                        {
+                            continue;
+                        }
+
+                        var shortAction = ActionShrinkDict[probingState];
+                        if (shortAction.Ops.Count >= opLength)
+                        {
+                            continue;
+                        }
+
+                        //
+                        // We found a match. Replace it with a shorter op list.
+                        //
+                        // Though we could wait for a longer match of op list,
+                        // or we scan the entire list again after replacement,
+                        // by observation, the current greedy strategy below
+                        // yields good enough result and better performance.
+                        //
+
+                        newOps.RemoveRange(endIdx, opLength);
+                        newOps.InsertRange(endIdx, shortAction.Ops);
+
+                        startIdx = endIdx + shortAction.Ops.Count - 1;
+                        if (startIdx <= endIdx)
+                        {
+                            endIdx = startIdx - 1;
+                        }
+
+                        foundCount++;
+                        Console.Write(
+                            $"{foundCount}:[{opLength}=>{shortAction.Ops.Count}," +
+                            $"Len:{newOps.Count},Action:[{shortAction}]] ");
+                        Console.Out.Flush();
                     }
                 }
 
@@ -687,21 +697,40 @@ namespace GroupTheory_RubiksCube
 
             public CubeAction Simplify(SimplifyLevel level)
             {
+                if (Simplified[(int)level])
+                {
+                    return new CubeAction(this);
+                }
+                Simplified[(int)level] = true;
+
                 if (RefMode)
                 {
-                    // Flat myself
-                    var ret = new CubeAction(GetOps(), false);
-                    ret.AccelerationMap = GetAccelerationMap();
-                    ret = ret.Simplify(level);
+                    if (level >= SimplifyLevel.Level1)
+                    {
+                        for (int i = 0;i < Operand.Count; i++)
+                        {
+                            Operand[i] = Operand[i].Simplify(level);
+                        }
 
-                    return ret;
+                        // Flat myself
+                        var myOps = GetOps().ToList();
+                        var ret = new CubeAction(myOps, false);
+                        ret.AccelerationMap = GetAccelerationMap();
+
+                        ret = ret.Simplify(level);
+                        return ret;
+                    }
+                    else
+                    {
+                        return new CubeAction(this);
+                    }
                 }
                 else
                 {
                     var newOps = new List<CubeOp.Type>(Ops);
 
                     SimplifyNoops(newOps);
-                    if (level >= SimplifyLevel.Level1)
+                    if (level >= SimplifyLevel.Level2)
                     {
                         SimplifyActionShrink(newOps);
                     }
