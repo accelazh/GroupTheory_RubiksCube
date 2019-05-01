@@ -29,13 +29,13 @@ namespace GroupTheory_RubiksCube
                     }
                 }
 
-                public const bool PrintProgress = true;
+                public const bool PrintProgress = false;
 
                 public BlockSet Stablized;
 
                 public HashSet<CubeAction> Generators;
                 public HashSet<CubeAction> RejectedGenerators;
-                public SimsFilter GeneratorFilter;
+                public JerrumFilter GeneratorFilter;
 
                 public BlockSet ToStablize;
                 public Dictionary<BlockSet, CubeAction> OrbitToCoset;
@@ -46,7 +46,7 @@ namespace GroupTheory_RubiksCube
                 {
                     Stablized = new BlockSet(stablized);
                     ToStablize = new BlockSet(toStablize);
-                    GeneratorFilter = new SimsFilter(stablized, stablizerChain);
+                    GeneratorFilter = new JerrumFilter(stablized, stablizerChain);
                 }
 
                 private BlockSet ExploreNewCoset(BlockSet startState, CubeAction generator)
@@ -376,7 +376,7 @@ namespace GroupTheory_RubiksCube
                         Console.WriteLine(
                           $"{new string(' ', Stablized.Indexes.Count)}" +
                           $"{Stablized.Indexes.Count} - G:{newGenerator.Count()} " +
-                          $"FC:{GeneratorFilter.ModifyCount} GC:{Generators.Count} " +
+                          $"FC:{GeneratorFilter.JumpCount} GC:{Generators.Count} " +
                           $"CC:{(OrbitToCoset != null ? OrbitToCoset.Count : 0)} RJ:{RejectedGenerators.Count}");
                     }
 
@@ -426,7 +426,7 @@ namespace GroupTheory_RubiksCube
                         $"Stablized[{Stablized.Indexes.Count}] " +
                         $"AddGeneratorIncrementally: Accepted new generator: " +
                         $"foundStateCount={foundStateCount} Generators={Generators.Count} " +
-                        $"Cosets={OrbitToCoset.Count} FilterCount={GeneratorFilter.ModifyCount} " +
+                        $"Cosets={OrbitToCoset.Count} FilterCount={GeneratorFilter.JumpCount} " +
                         $"newGenerator=[{newGenerator.Count()}]");
 
                     if (progressInfo != null)
@@ -635,3 +635,5 @@ namespace GroupTheory_RubiksCube
         }
     }
 }
+
+// TODO We should let Simplify be internal simplify rather than return anything. So that we can reuse the layered simplify results
