@@ -10,17 +10,17 @@ namespace GroupTheory_RubiksCube
     {
         /// <summary>
         /// To reduce generator count, we apply Jerrum Filter.
-        /// 
+        ///
         /// Jerrum Filter allows we limit Generator count less than color block count. It allows online
         /// processing, i.e. to add generators incrementally. Along the sablizer chain, as we have stablized
         /// more and more color blocks, the limited generator count should be reducing.
-        /// 
+        ///
         /// see https://mathstrek.blog/2018/06/12/schreier-sims-algorithm/ for Sims Filter, a simplified
         /// verision of Jerrum Filter.
-        /// 
+        ///
         /// See http://www.m8j.net/data/List/Files-118/Documentation.pdf for Jerrum Filter and math
         /// proof.
-        /// 
+        ///
         /// The general idea is, we map generator to a graph. We constraint the generator on the graph
         /// to not have any cycles. If a new generator creates a cycle, we replace it.
         /// </summary>

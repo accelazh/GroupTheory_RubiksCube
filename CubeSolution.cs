@@ -562,7 +562,7 @@ namespace GroupTheory_RubiksCube
                     progressInfo.CompletedWork++;
                 }
             }
-            
+
             public void SimplifyCosets()
             {
                 //
@@ -677,7 +677,26 @@ namespace GroupTheory_RubiksCube
                     Console.WriteLine(
                         $"DumpGSteps[{g.Stablized.Indexes.Count}]: " +
                         $"Cosets={cosetCount} Generators={generatorCount} " +
-                        $"Stablized=[{stablizedStr}]");
+                        $"Stablized=[{stablizedStr} CosetRepresentaives=[");
+
+                    if (g.OrbitToCoset != null)
+                    {
+                        int cosetIdx = 0;
+                        foreach (var cosetKv in g.OrbitToCoset)
+                        {
+                            var state = cosetKv.Key;
+                            var action = cosetKv.Value;
+
+                            var actionStr = action.ToStringWithFormula();
+                            Console.WriteLine(
+                                $"DumpGSteps[{g.Stablized.Indexes.Count}]: " +
+                                $"Coset[{cosetIdx}/{cosetCount}]=[{state}]=[{actionStr}]");
+
+                            cosetIdx++;
+                        }
+                    }
+
+                    Console.WriteLine("]");
                 }
             }
 

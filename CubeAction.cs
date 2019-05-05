@@ -38,7 +38,7 @@ namespace GroupTheory_RubiksCube
             public enum SimplifyLevel
             {
                 Level0 = 0, // Non RefMode SimplifyNoops
-                Level1,     // RefMode SimplifyReverse 
+                Level1,     // RefMode SimplifyReverse
                 Level2,     // RefMode SimplifyNoops
                 Level3,     // SimplifyActionShrink
             }
@@ -268,7 +268,7 @@ namespace GroupTheory_RubiksCube
                     else if (Operator.Reverse == OpNode)
                     {
                         Utils.DebugAssert(Operand.Count == 1);
-                        retCount = Operand[0].Count() * (CubeState.TurnAround - 1); 
+                        retCount = Operand[0].Count() * (CubeState.TurnAround - 1);
                     }
                     else
                     {
@@ -1003,7 +1003,166 @@ namespace GroupTheory_RubiksCube
                         (count > 1 ? $"{count} " : " "));
                 }
 
+                return outStr.ToString().Trim();
+            }
+
+            public string ToStringWithFormula()
+            {
+                const int ACTION_PRINT_SIZE_LIMIT = 10000;
+
+                if (Count() <= ACTION_PRINT_SIZE_LIMIT && Count() >= 0)
+                {
+                    return ToString();
+                }
+                else
+                {
+                    return FomulaToString();
+                }
+            }
+
+            // Since ToSring() for very large CubeAction can be too long to be printed,
+            // We switch to use a math formula to describe what this CubeAction is composed
+            // of.
+            public string FomulaToString()
+            {
+                var outStr = new StringBuilder();
+
+                var formulaList = new List<string>();
+                var formulaExpressions = new Dictionary<string, string>();
+                var knownFormulas = new Dictionary<CubeAction, string>();
+
+                string myName = FormulaToString(formulaList, formulaExpressions, knownFormulas);
+                string myExpression = formulaExpressions[myName];
+                outStr.Append($"Myself={myName}={formulaExpressions[myName]}");
+
+                bool metMyName = false;
+                foreach (var formula in Enumerable.Reverse(formulaList.Skip(1)))
+                {
+                    if (!metMyName)
+                    {
+                        if (formula.Equals(myName))
+                        {
+                            metMyName = true;
+                        }
+                        continue;
+                    }
+
+                    outStr.Append(", ");
+                    outStr.Append($"{formula}={formulaExpressions[formula]}");
+                }
+
                 return outStr.ToString();
+            }
+
+            private string GenerateFormulaName(Dictionary<CubeAction, string> knownFormulas)
+            {
+                const char NAME_START = 'A';
+                const char NAME_END = 'Z';
+
+                const int NAME_SIZE_LEVEL_1 = 10;
+                const int NAME_SIZE_LEVEL_2 = 100;
+
+                int existingNameCount = knownFormulas.Count;
+                string nameStr;
+
+                if (existingNameCount < (NAME_END - NAME_START + 1) * NAME_SIZE_LEVEL_1)
+                {
+                    int quotient = existingNameCount / NAME_SIZE_LEVEL_1;
+                    int remainder = existingNameCount % NAME_SIZE_LEVEL_1;
+
+                    char nameStart = (char)(quotient + (int)NAME_START);
+                    int nameNum = remainder;
+
+                    nameStr = $"{nameStart}{nameNum}";
+                }
+                else if (existingNameCount < (NAME_END - NAME_START + 1) * NAME_SIZE_LEVEL_2)
+                {
+                    int level = NAME_SIZE_LEVEL_2 - NAME_SIZE_LEVEL_1;
+                    int quotient = existingNameCount / level;
+                    int remainder = existingNameCount % level;
+
+                    char nameStart = (char)(quotient + (int)NAME_START);
+                    int nameNum = remainder + NAME_SIZE_LEVEL_1;
+
+                    nameStr = $"{nameStart}{nameNum}";
+                }
+                else
+                {
+                    char nameStart = (char)(NAME_START + Utils.GlobalRandom.Next(0, NAME_END - NAME_START + 1));
+                    do
+                    {
+                        int nameNum = NAME_SIZE_LEVEL_2 + 1 + Utils.GlobalRandom.Next();
+                        nameStr = $"{nameStart}{nameNum}";
+                    } while (knownFormulas.Values.Contains(nameStr));
+                }
+
+                Utils.DebugAssert(!knownFormulas.Values.Contains(nameStr));
+                return nameStr;
+            }
+
+            private string FormulaToString(
+                List<string> formulaList,
+                Dictionary<string, string> formulaExpressions,
+                Dictionary<CubeAction, string> knownFormulas)
+            {
+                if (formulaList.Count <= 0)
+                {
+                    string idName = "Identity";
+
+                    formulaList.Add(idName);
+                    formulaExpressions.Add(idName, idName);
+                    knownFormulas.Add(new CubeAction(), idName);
+                }
+
+                string tryMyName;
+                if (knownFormulas.TryGetValue(this, out tryMyName))
+                {
+                    return tryMyName;
+                }
+
+                string myName;
+                string myExpression;
+                if (RefMode)
+                {
+                    if (Operator.Mul == OpNode)
+                    {
+                        var nameLeft = Operand[0].FormulaToString(formulaList, formulaExpressions, knownFormulas);
+                        var nameRight = Operand[1].FormulaToString(formulaList, formulaExpressions, knownFormulas);
+
+                        myName = GenerateFormulaName(knownFormulas);
+                        // Similar with ToString, we print in revser order so that to be executable on https://alg.cubing.net
+                        myExpression = $"{nameRight}*{nameLeft}";
+                    }
+                    else if (Operator.Reverse == OpNode)
+                    {
+                        var nameChild = Operand[0].FormulaToString(formulaList, formulaExpressions, knownFormulas);
+                        bool hasSpace = nameChild.IndexOf(' ') >= 0;
+
+                        myName = GenerateFormulaName(knownFormulas);
+                        myExpression = (hasSpace? $"({nameChild})^(-1)" : $"{nameChild}^(-1)");
+                    }
+                    else
+                    {
+                        throw new ArgumentException();
+                    }
+                }
+                else
+                {
+                    myName = GenerateFormulaName(knownFormulas);
+                    myExpression = $"[{this.ToString()}]";
+                }
+
+                // The child may have already added duplicated action
+                if (knownFormulas.TryGetValue(this, out tryMyName))
+                {
+                    return tryMyName;
+                }
+
+                formulaList.Add(myName);
+                formulaExpressions.Add(myName, myExpression);
+                knownFormulas.Add(this, myName);
+
+                return myName;
             }
         }
     }
