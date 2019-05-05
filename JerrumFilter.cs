@@ -105,7 +105,7 @@ namespace GroupTheory_RubiksCube
                         ActionGrid[pair.Item2, pair.Item1] = newGenerator.Reverse();
 
                         cyclePath = RearrangeCycleFromSmallest(cyclePath);
-                        replacedGenerator = CalculateCyclePathProduce(cyclePath);
+                        replacedGenerator = CalculateCyclePathProduct(cyclePath);
 
                         ActionGrid[cyclePath[0].Item1, cyclePath[0].Item2] = null;
                         ActionGrid[cyclePath[0].Item2, cyclePath[0].Item1] = null;
@@ -261,7 +261,7 @@ namespace GroupTheory_RubiksCube
                 }
             }
 
-            private CubeAction CalculateCyclePathProduce(List<Tuple<int, int>> cyclePath)
+            private CubeAction CalculateCyclePathProduct(List<Tuple<int, int>> cyclePath)
             {
                 var ret = ActionGrid[cyclePath[0].Item1, cyclePath[0].Item2];
                 Utils.DebugAssert(cyclePath.Count >= 2);

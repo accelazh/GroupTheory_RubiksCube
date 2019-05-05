@@ -603,6 +603,24 @@ namespace GroupTheory_RubiksCube
                         coset.Simplify(CubeAction.SimplifyLevel.Level2);
                     }
                 }
+
+                foreach (var gStep in gSteps)
+                {
+                    int count = 0;
+                    foreach (var bs in gStep.OrbitToCoset.Keys)
+                    {
+                        count++;
+                        var coset = gStep.OrbitToCoset[bs];
+
+                        Console.WriteLine(
+                            $"Stablized[{gStep.Stablized.Indexes.Count}] " +
+                            $"Simplifying Coset: Level3: Size={coset.Count()} " +
+                            $"Cosets={count}/{gStep.OrbitToCoset.Count} " +
+                            $"Generators={gStep.Generators.Count}");
+
+                        coset.Simplify(CubeAction.SimplifyLevel.Level2);
+                    }
+                }
             }
 
             public List<CubeAction> SolveCube(CubeState puzzleState)
