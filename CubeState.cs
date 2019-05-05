@@ -1157,7 +1157,7 @@ namespace GroupTheory_RubiksCube
                 {
                     foreach (Direction direction in Enum.GetValues(typeof(Direction)))
                     {
-                        strOut.AppendLine(ToString(axis, direction));
+                        strOut.Append(ToString(axis, direction));
                     }
                 }
 

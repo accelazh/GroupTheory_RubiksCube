@@ -33,23 +33,6 @@ namespace GroupTheory_RubiksCube
             public List<CubeAction> Operand = new List<CubeAction>();
             private long BufferedCount = -1;
 
-            // By SimplifyReverse, we sink down Reverse operation throgh the tree.
-            // Naviely we would alter each tree node along the path, because CubeAction
-            // is deemed to be immutable. However, this would be too slow for a 100+ layer
-            // tree.
-            //
-            // On the contrary, to speed up SimplifyReverse, we allow temporarily alter
-            // CubeAction locally without creating a new one. This is to mark a CubeAction
-            // as Reversed, i.e. being applied with a ^(-1).
-            //
-            // Another benefit is, since we don't create new CubeAction for trunk nodes.
-            // If we have already SimplifyReverse-ed a trunk node, we can mark
-            // Simplified[Level1] as true, and the work is reused in future.
-            //
-            // This is only the special use only for SimplifyReverse, we disallow mutable
-            // CubeAction in other cases.
-            private bool SimplifyReverse_FlipReverse = false;
-
             private bool[] Simplified = new bool[Enum.GetNames(typeof(SimplifyLevel)).Length];
 
             public enum SimplifyLevel
@@ -81,8 +64,6 @@ namespace GroupTheory_RubiksCube
                 this.OpNode = other.OpNode;
                 this.Operand = new List<CubeAction>(other.Operand);
                 this.BufferedCount = other.BufferedCount;
-
-                this.SimplifyReverse_FlipReverse = other.SimplifyReverse_FlipReverse;
 
                 Array.Copy(other.Simplified, this.Simplified, this.Simplified.Length);
 
@@ -150,7 +131,33 @@ namespace GroupTheory_RubiksCube
                 return new CubeAction(opInts);
             }
 
+            private static IEnumerable<CubeOp.Type> FilterNoops(IEnumerable<CubeOp.Type> ops)
+            {
+                // As observed, some newOps may keep loop deleting for very long time
+                // but never finish, each loop only deletes few duplicates. We add a hard
+                // limit to it. Practically, the first loop removes absolutely most duplicates.
+                {
+                    // Previously we tried LinkedList for flexible deletion, but later
+                    // we found LinkedList constructor took ~50% time in total.
+                    foreach (var dup in Utils.PackDuplicates(ops))
+                    {
+                        CubeOp.Type op = dup.Item3;
+                        int lengthToCopy = dup.Item2 % CubeState.TurnAround;
+
+                        for (int i = 0; i < lengthToCopy; i++)
+                        {
+                            yield return op;
+                        }
+                    }
+                }
+            }
+
             public IEnumerable<CubeOp.Type> GetOps()
+            {
+                return FilterNoops(GetOps_Raw());
+            }
+
+            private IEnumerable<CubeOp.Type> GetOps_Raw()
             {
                 if (RefMode)
                 {
@@ -169,7 +176,7 @@ namespace GroupTheory_RubiksCube
                     else if (Operator.Reverse == OpNode)
                     {
                         Utils.DebugAssert(Operand.Count == 1);
-                        foreach (var op in Enumerable.Reverse(Operand[0].GetOps()))
+                        foreach (var op in Operand[0].GetOpsReversed())
                         {
                             foreach (var innerOp in CubeOp.Reverse(op))
                             {
@@ -185,6 +192,52 @@ namespace GroupTheory_RubiksCube
                 else
                 {
                     foreach (var op in Ops)
+                    {
+                        yield return op;
+                    }
+                }
+            }
+
+            public IEnumerable<CubeOp.Type> GetOpsReversed()
+            {
+                return FilterNoops(GetOpsReversed_Raw());
+            }
+
+            private IEnumerable<CubeOp.Type> GetOpsReversed_Raw()
+            {
+                if (RefMode)
+                {
+                    if (Operator.Mul == OpNode)
+                    {
+                        Utils.DebugAssert(Operand.Count == 2);
+                        foreach (var op in Operand[1].GetOpsReversed())
+                        {
+                            yield return op;
+                        }
+                        foreach (var op in Operand[0].GetOpsReversed())
+                        {
+                            yield return op;
+                        }
+                    }
+                    else if (Operator.Reverse == OpNode)
+                    {
+                        Utils.DebugAssert(Operand.Count == 1);
+                        foreach (var op in Operand[0].GetOps())
+                        {
+                            foreach (var innerOp in CubeOp.Reverse(op))
+                            {
+                                yield return innerOp;
+                            }
+                        }
+                    }
+                    else
+                    {
+                        throw new ArgumentException();
+                    }
+                }
+                else
+                {
+                    foreach (var op in Enumerable.Reverse(Ops))
                     {
                         yield return op;
                     }
@@ -441,27 +494,7 @@ namespace GroupTheory_RubiksCube
             // It can be ~3 seconds for long CubeActions, e.g. Ops.Count ~600K.
             private static List<CubeOp.Type> SimplifyNoops(IEnumerable<CubeOp.Type> newOps)
             {
-                var ret = new List<CubeOp.Type>();
-                if (newOps.Count() <= 0)
-                {
-                    return ret;
-                }
-
-                // As observed, some newOps may keep loop deleting for very long time
-                // but never finish, each loop only deletes few duplicates. We add a hard
-                // limit to it. Practically, the first loop removes absolutely most duplicates.
-                {
-                    // Previously we tried LinkedList for flexible deletion, but later
-                    // we found LinkedList constructor took ~50% time in total.
-                    foreach (var dup in Utils.PackDuplicates(newOps))
-                    {
-                        CubeOp.Type op = dup.Item3;
-                        int lengthToCopy = dup.Item2 % CubeState.TurnAround;
-
-                        ret.AddRange(Enumerable.Repeat(op, lengthToCopy));
-                    }
-                }
-
+                var ret = FilterNoops(newOps).ToList();
                 return ret;
             }
 
@@ -638,7 +671,7 @@ namespace GroupTheory_RubiksCube
                 BufferedCount = -1;
             }
 
-            private void SimplifyReverse()
+            private void SimplifyReverse(bool printProgress)
             {
                 if (!RefMode)
                 {
@@ -649,45 +682,23 @@ namespace GroupTheory_RubiksCube
                 var path = new StringBuilder();
                 path.Append('r');
 
-                for (int i = 0; i < Operand.Count; i++)
-                {
-                    Operand[i] = Operand[i].SimplifyReverse_DeepCopy();
-                }
-
-                int simplifiedDepth = SimplifyReverse_Sink(0, path);
+                int simplifiedDepth = SimplifyReverse_Sink(0, path, printProgress);
                 SimplifyReverse_Finalize();
 
-                if (simplifiedDepth > 0)
+                if (simplifiedDepth > 0 && printProgress)
                 {
-                    Console.WriteLine($"SimplifyReverse: oldCount={oldCount} newCount={this.Count()} simplifedDepth={simplifiedDepth}");
+                    Console.WriteLine(
+                        $"SimplifyReverse: oldCount={oldCount} newCount={this.Count()} " +
+                        $"simplifedDepth={simplifiedDepth}");
                 }
 
                 VerifySimplifyReverse();
             }
 
-            // SimplifyReverse will alter every chunk nodes in the tree. Since
-            // a trunk node may be referenced by other trees, we deep copy them.
-            // Also, a CubeAction can be shared operand in more than two nodes in
-            // one tree. DeepCopy avoids such dilemma.
-            private CubeAction SimplifyReverse_DeepCopy()
-            {
-                CubeAction ret = new CubeAction(this);
-
-                if (RefMode)
-                {
-                    for (int i = 0; i < ret.Operand.Count; i++)
-                    {
-                        ret.Operand[i] = ret.Operand[i].SimplifyReverse_DeepCopy();
-                    }
-                }
-
-                return ret;
-            }
-
             // In RefMode tree, if there are Reverse operation in the trunk,
             // they can always sink to leaves. If two Reverse operation hit
             // in middle, they can be neutralized.
-            private int SimplifyReverse_Sink(int depth, StringBuilder path)
+            private int SimplifyReverse_Sink(int depth, StringBuilder path, bool printProgress)
             {
                 int simplifiedDepth = 0;
                 if (!RefMode)
@@ -696,170 +707,92 @@ namespace GroupTheory_RubiksCube
                     return simplifiedDepth;
                 }
 
-                while (RefMode
-                    && (Operator.Reverse == OpNode
-                        || SimplifyReverse_FlipReverse))
+                if (Operator.Reverse == OpNode)
                 {
-                    if (Operator.Reverse == OpNode)
+                    Utils.DebugAssert(Operand.Count == 1);
+                    var child = Operand[0];
+
+                    if (child.RefMode)
                     {
-                        Utils.DebugAssert(Operand.Count == 1);
-                        var child = Operand[0];
-
-                        if (SimplifyReverse_FlipReverse)
+                        if (Operator.Mul == child.OpNode)
                         {
-                            Utils.DebugAssert(!child.SimplifyReverse_FlipReverse);
-                            SimplifyReverse_FlipReverse = false;
-
-                            if (child.RefMode)
-                            {
-                                this.OpNode = child.OpNode;
-                                this.Operand = new List<CubeAction>(child.Operand);
-
-                                // Console.WriteLine($"SimplifyReverse: Depth={depth} Path={path} Me.Reverse.Flip Child.RefMode");
-                            }
-                            else
-                            {
-                                this.Ops = new List<CubeOp.Type>(child.Ops);
-                                Flat();
-
-                                // Console.WriteLine($"SimplifyReverse: Depth={depth} Path={path} Me.Reverse.Flip Child.NonRefMode");
-                            }
-
-                            simplifiedDepth += 1;
-                        }
-                        else
-                        {
-                            Utils.DebugAssert(!child.SimplifyReverse_FlipReverse);
-
-                            if (child.RefMode)
-                            {
-                                if (Operator.Mul == child.OpNode)
-                                {
-                                    Utils.DebugAssert(child.Operand.Count == 2);
-                                    var operandLeft = child.Operand[0];
-                                    var operandRight = child.Operand[1];
-
-                                    Utils.DebugAssert(!operandLeft.SimplifyReverse_FlipReverse
-                                                        || !operandLeft.RefMode);
-                                    Utils.DebugAssert(!operandRight.SimplifyReverse_FlipReverse
-                                                        || !operandRight.RefMode);
-
-                                    this.OpNode = Operator.Mul;
-                                    this.Operand.Clear();
-                                    this.Operand.Add(operandRight);
-                                    this.Operand.Add(operandLeft);
-                                    operandRight.SimplifyReverse_FlipReverse = !operandRight.SimplifyReverse_FlipReverse;
-                                    operandLeft.SimplifyReverse_FlipReverse = !operandLeft.SimplifyReverse_FlipReverse;
-
-                                    simplifiedDepth += 1;
-                                    // Console.WriteLine($"SimplifyReverse: Depth={depth} Path={path} Me.Reverse Child.Mul");
-                                }
-                                else if (Operator.Reverse == child.OpNode)
-                                {
-                                    Utils.DebugAssert(child.Operand.Count == 1);
-                                    var grandchild = child.Operand[0];
-
-                                    Utils.DebugAssert(!grandchild.SimplifyReverse_FlipReverse);
-                                    SimplifyReverse_FlipReverse = false;
-
-                                    if (grandchild.RefMode)
-                                    {
-                                        this.OpNode = grandchild.OpNode;
-                                        this.Operand = new List<CubeAction>(grandchild.Operand);
-
-                                        // Console.WriteLine($"SimplifyReverse: Depth={depth} Path={path} Me.Reverse Child.Reverse GrandChild.RefMode");
-                                    }
-                                    else
-                                    {
-                                        this.Ops = new List<CubeOp.Type>(grandchild.Ops);
-                                        Flat();
-
-                                        // Console.WriteLine($"SimplifyReverse: Depth={depth} Path={path} Me.Reverse Child.Reverse GrandChild.NonRefMode");
-                                    }
-
-                                    simplifiedDepth += 2;
-                                }
-                                else
-                                {
-                                    throw new ArgumentException();
-                                }
-                            }
-                            else
-                            {
-                                break;
-                            }
-                        }
-                    }
-                    else if (Operator.Mul == OpNode)
-                    {
-                        if (SimplifyReverse_FlipReverse)
-                        {
-                            SimplifyReverse_FlipReverse = false;
-
-                            Utils.DebugAssert(Operand.Count == 2);
-                            var operandLeft = Operand[0];
-                            var operandRight = Operand[1];
-
-                            Utils.DebugAssert(!operandLeft.SimplifyReverse_FlipReverse
-                                                || !operandLeft.RefMode);
-                            Utils.DebugAssert(!operandRight.SimplifyReverse_FlipReverse
-                                                || !operandRight.RefMode);
+                            Utils.DebugAssert(child.Operand.Count == 2);
+                            var operandLeft = child.Operand[0];
+                            var operandRight = child.Operand[1];
 
                             this.OpNode = Operator.Mul;
-                            this.Operand.Clear();
-                            this.Operand.Add(operandRight);
-                            this.Operand.Add(operandLeft);
-                            operandRight.SimplifyReverse_FlipReverse = !operandRight.SimplifyReverse_FlipReverse;
-                            operandLeft.SimplifyReverse_FlipReverse = !operandLeft.SimplifyReverse_FlipReverse;
+                            this.Operand = new List<CubeAction>(){
+                                operandRight.Reverse(),
+                                operandLeft.Reverse()
+                            };
 
-                            simplifiedDepth += 0;  // To say sink flip reverse on Mul cannot reduce depth
-                            // Console.WriteLine($"SimplifyReverse: Depth={depth} Path={path} Me.Mul.Flip");
+                            simplifiedDepth += 1;
+
+                            if (printProgress)
+                            {
+                                Console.WriteLine(
+                                    $"SimplifyReverse: Depth={depth} Path={path} " +
+                                    $"Me.Reverse Child.Mul");
+                            }
+                        }
+                        else if (Operator.Reverse == child.OpNode)
+                        {
+                            Utils.DebugAssert(child.Operand.Count == 1);
+                            var grandchild = child.Operand[0];
+
+                            if (grandchild.RefMode)
+                            {
+                                this.OpNode = grandchild.OpNode;
+                                this.Operand = new List<CubeAction>(grandchild.Operand);
+
+                                if (printProgress)
+                                {
+                                    Console.WriteLine(
+                                        $"SimplifyReverse: Depth={depth} Path={path} " +
+                                        $"Me.Reverse Child.Reverse GrandChild.RefMode");
+                                }
+                            }
+                            else
+                            {
+                                this.Ops = new List<CubeOp.Type>(grandchild.Ops);
+                                Flat();
+
+                                if (printProgress)
+                                {
+                                    Console.WriteLine(
+                                        $"SimplifyReverse: Depth={depth} Path={path} " +
+                                        $"Me.Reverse Child.Reverse GrandChild.NonRefMode");
+                                }
+                            }
+
+                            simplifiedDepth += 2;
                         }
                         else
                         {
-                            break;
+                            throw new ArgumentException();
                         }
-                    }
-                    else
-                    {
-                        throw new ArgumentException();
+
+                        path.Append('s');
+                        SimplifyReverse_Sink(depth, path, printProgress);
                     }
                 }
-
-                if (!RefMode)
+                else if (Operator.Mul == OpNode)
                 {
-                    path.Remove(path.Length - 1, 1);
-                    return simplifiedDepth;
-                }
-
-                if (Operator.Mul == OpNode)
-                {
-                    Utils.DebugAssert(!SimplifyReverse_FlipReverse);
-
                     Utils.DebugAssert(Operand.Count == 2);
                     var operandLeft = Operand[0];
                     var operandRight = Operand[1];
 
                     path.Append('0');
-                    simplifiedDepth += operandLeft.SimplifyReverse_Sink(depth + 1, path);
+                    simplifiedDepth += operandLeft.SimplifyReverse_Sink(depth + 1, path, printProgress);
 
                     path.Append('1');
-                    simplifiedDepth += operandRight.SimplifyReverse_Sink(depth + 1, path);
-                }
-                else if (Operator.Reverse == OpNode)
-                {
-                    Utils.DebugAssert(!SimplifyReverse_FlipReverse);
-
-                    Utils.DebugAssert(Operand.Count == 1);
-                    var child = Operand[0];
-
-                    Utils.DebugAssert(!child.RefMode);
-                    Utils.DebugAssert(!child.SimplifyReverse_FlipReverse);
+                    simplifiedDepth += operandRight.SimplifyReverse_Sink(depth + 1, path, printProgress);
                 }
                 else
                 {
                     throw new ArgumentException();
                 }
+
 
                 this.BufferedCount = -1;
                 path.Remove(path.Length - 1, 1);
@@ -868,48 +801,17 @@ namespace GroupTheory_RubiksCube
 
             private void SimplifyReverse_Finalize()
             {
-                Utils.DebugAssert(!SimplifyReverse_FlipReverse);
+                Simplified[(int)SimplifyLevel.Level1] = true;
 
                 if (!RefMode)
                 {
                     return;
                 }
 
-                if (Operator.Reverse == OpNode)
-                {
-                    Utils.DebugAssert(Operand.Count == 1);
-                    var child = Operand[0];
-
-                    Utils.DebugAssert(!child.SimplifyReverse_FlipReverse);
-                }
-                else if (Operator.Mul == OpNode)
-                {
-                    Utils.DebugAssert(Operand.Count == 2);
-
-                    if (Operand[0].SimplifyReverse_FlipReverse)
-                    {
-                        Operand[0].SimplifyReverse_FlipReverse = false;
-                        Operand[0] = Operand[0].Reverse(true);
-                        Utils.DebugAssert(!Operand[0].SimplifyReverse_FlipReverse);
-                    }
-                    if (Operand[1].SimplifyReverse_FlipReverse)
-                    {
-                        Operand[1].SimplifyReverse_FlipReverse = false;
-                        Operand[1] = Operand[1].Reverse(true);
-                        Utils.DebugAssert(!Operand[1].SimplifyReverse_FlipReverse);
-                    }
-                }
-                else
-                {
-                    throw new ArgumentException();
-                }
-
                 foreach (var child in Operand)
                 {
                     child.SimplifyReverse_Finalize();
                 }
-
-                Simplified[(int)SimplifyLevel.Level1] = true;
             }
 
             // There shouldn't be any Reverse operation in tree trunk
@@ -924,7 +826,6 @@ namespace GroupTheory_RubiksCube
                     return;
                 }
 
-                Utils.DebugAssert(!SimplifyReverse_FlipReverse);
                 Utils.DebugAssert(Simplified[(int)SimplifyLevel.Level1]);
 
                 if (RefMode)
@@ -957,14 +858,11 @@ namespace GroupTheory_RubiksCube
                 {
                     if (level >= SimplifyLevel.Level1 && !Simplified[(int)SimplifyLevel.Level1])
                     {
-                        SimplifyReverse();
+                        SimplifyReverse(false);
                     }
 
                     if (level >= SimplifyLevel.Level2 && !Simplified[(int)SimplifyLevel.Level2])
                     {
-                        // Flat myself.
-                        // SimplifyNoops with online iterator, so that we may avoid OOM
-                        // for very large CubeActions
                         this.Ops = SimplifyNoops(GetOps());
                         Flat();
                     }
@@ -1095,7 +993,7 @@ namespace GroupTheory_RubiksCube
             {
                 var outStr = new StringBuilder();
 
-                foreach (var dup in Utils.PackDuplicates(Enumerable.Reverse(GetOps())))
+                foreach (var dup in Utils.PackDuplicates(GetOpsReversed()))
                 {
                     var op = dup.Item3;
                     var count = dup.Item2;

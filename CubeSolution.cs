@@ -498,10 +498,9 @@ namespace GroupTheory_RubiksCube
                 return ret;
             }
 
-
             // We may try out the generated CubeActions on https://alg.cubing.net.
             // The CubeAction.ToString() results can be directly executed on it.
-            public void CalculateSolvingMap()
+            public void SolveCosetMap()
             {
                 if (StablizerChain.Count <= 1)
                 {
@@ -512,7 +511,7 @@ namespace GroupTheory_RubiksCube
                 // Prepare the GStep along the stablizer chain
                 //
 
-                var gSteps = new List<GStep>();
+                var gSteps = SolvingMap;
                 for (int i = 0; i < StablizerChain.Count; i++)
                 {
                     BlockSet toStablize = new BlockSet(StablizerChain[i]);
@@ -562,77 +561,150 @@ namespace GroupTheory_RubiksCube
                     gSteps[0].AddGeneratorIncrementally(g, progressInfoList);
                     progressInfo.CompletedWork++;
                 }
-
+            }
+            
+            public void SimplifyCosets()
+            {
                 //
                 // Simplify each cosets. But we don't need to simplify generators
                 // to solve the cube.
                 //
 
+                var gSteps = SolvingMap;
                 foreach (var gStep in gSteps)
                 {
+                    if (null == gStep.OrbitToCoset)
+                    {
+                        continue;
+                    }
+
                     int count = 0;
                     foreach (var bs in gStep.OrbitToCoset.Keys)
                     {
                         count++;
                         var coset = gStep.OrbitToCoset[bs];
 
-                        Console.WriteLine(
+                        Console.Write(
                             $"Stablized[{gStep.Stablized.Indexes.Count}] " +
-                            $"Simplifying Coset: Level1: Size={coset.Count()} " +
+                            $"Simplifying Coset: Level1: " +
                             $"Cosets={count}/{gStep.OrbitToCoset.Count} " +
-                            $"Generators={gStep.Generators.Count}");
+                            $"Size={coset.Count()} " +
+                            $"Generators={gStep.Generators.Count} ");
+                        Console.Out.Flush();
 
                         coset.Simplify(CubeAction.SimplifyLevel.Level1);
+
+                        Console.WriteLine(
+                            $"SizeSimplified={coset.Count()}");
                     }
                 }
 
                 foreach (var gStep in gSteps)
                 {
+                    if (null == gStep.OrbitToCoset)
+                    {
+                        continue;
+                    }
+
                     int count = 0;
                     foreach (var bs in gStep.OrbitToCoset.Keys)
                     {
                         count++;
                         var coset = gStep.OrbitToCoset[bs];
 
-                        Console.WriteLine(
+                        Console.Write(
                             $"Stablized[{gStep.Stablized.Indexes.Count}] " +
-                            $"Simplifying Coset: Level2: Size={coset.Count()} " +
+                            $"Simplifying Coset: Level1: " +
                             $"Cosets={count}/{gStep.OrbitToCoset.Count} " +
-                            $"Generators={gStep.Generators.Count}");
+                            $"Size={coset.Count()} " +
+                            $"Generators={gStep.Generators.Count} ");
+                        Console.Out.Flush();
 
                         coset.Simplify(CubeAction.SimplifyLevel.Level2);
+
+                        Console.WriteLine(
+                            $"SizeSimplified={coset.Count()}");
                     }
                 }
 
                 foreach (var gStep in gSteps)
                 {
+                    if (null == gStep.OrbitToCoset)
+                    {
+                        continue;
+                    }
+
                     int count = 0;
                     foreach (var bs in gStep.OrbitToCoset.Keys)
                     {
                         count++;
                         var coset = gStep.OrbitToCoset[bs];
 
-                        Console.WriteLine(
+                        Console.Write(
                             $"Stablized[{gStep.Stablized.Indexes.Count}] " +
-                            $"Simplifying Coset: Level3: Size={coset.Count()} " +
+                            $"Simplifying Coset: Level1: " +
                             $"Cosets={count}/{gStep.OrbitToCoset.Count} " +
-                            $"Generators={gStep.Generators.Count}");
+                            $"Size={coset.Count()} " +
+                            $"Generators={gStep.Generators.Count} ");
+                        Console.Out.Flush();
 
-                        coset.Simplify(CubeAction.SimplifyLevel.Level2);
+                        coset.Simplify(CubeAction.SimplifyLevel.Level3);
+
+                        Console.WriteLine(
+                            $"SizeSimplified={coset.Count()}");
                     }
                 }
             }
 
-            public List<CubeAction> SolveCube(CubeState puzzleState)
+            public void DumpGSteps()
+            {
+                for (int gIdx = 0; gIdx < SolvingMap.Count; gIdx++)
+                {
+                    var g = SolvingMap[gIdx];
+                    int cosetCount = (g.OrbitToCoset != null ? g.OrbitToCoset.Count : 1);  // 1 for the identity coset
+                    int generatorCount = (g.Generators != null ? g.Generators.Count : 0);  // Excluded identity generator
+
+                    string stablizedStr;
+                    if (gIdx > 0)
+                    {
+                        stablizedStr = $"{SolvingMap[gIdx - 1].ToStablize}";
+                    }
+                    else
+                    {
+                        stablizedStr = "";
+                    }
+
+                    Console.WriteLine(
+                        $"DumpGSteps[{g.Stablized.Indexes.Count}]: " +
+                        $"Cosets={cosetCount} Generators={generatorCount} " +
+                        $"Stablized=[{stablizedStr}]");
+                }
+            }
+
+            public List<Tuple<CubeAction, CubeState>> SolveCube(CubeState puzzleState)
             {
                 if (SolvingMap.Count <= 0)
                 {
                     throw new ArgumentException();
                 }
 
-                var ret = new List<CubeAction>();
-                foreach (var g in SolvingMap)
+                var originalPuzzleState = new CubeState(puzzleState);
+                var ret = new List<Tuple<CubeAction, CubeState>>();
+                ret.Add(new Tuple<CubeAction, CubeState>(new CubeAction(), new CubeState(puzzleState)));
+
+                for (int gIdx = 0; gIdx < SolvingMap.Count; gIdx++)
                 {
+                    var g = SolvingMap[gIdx];
+                    if (null == g.OrbitToCoset)
+                    {
+                        for (int gIdx_inner = gIdx + 1; gIdx_inner < SolvingMap.Count; gIdx_inner++)
+                        {
+                            Utils.DebugAssert(null == SolvingMap[gIdx_inner].OrbitToCoset);
+                        }
+
+                        continue;
+                    }
+
                     var observed = new BlockSet(puzzleState, g.ToStablize.Indexes);
                     if (!g.OrbitToCoset.ContainsKey(observed))
                     {
@@ -643,16 +715,19 @@ namespace GroupTheory_RubiksCube
                     var rCosetRepr = cosetRepresentative.Reverse();
 
                     rCosetRepr.Act(observed.State);
-                    ret.Add(rCosetRepr);
+                    puzzleState = observed.State;
 
                     Utils.DebugAssert(g.OrbitToCoset.ContainsKey(observed));
                     Utils.DebugAssert(g.OrbitToCoset[observed].Equals(new CubeAction()));
+
+                    ret.Add(new Tuple<CubeAction, CubeState>(rCosetRepr, new CubeState(observed.State)));
                 }
 
                 {
-                    var trialState = new CubeState(puzzleState);
-                    foreach (var action in ret)
+                    var trialState = new CubeState(originalPuzzleState);
+                    foreach (var pair in ret)
                     {
+                        var action = pair.Item1;
                         action.Act(trialState);
                     }
                     Utils.DebugAssert(trialState.Equals(new CubeState()));
